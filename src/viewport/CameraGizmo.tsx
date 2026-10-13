@@ -1,0 +1,127 @@
+import { useMemo } from 'react';
+import * as THREE from 'three';
+import { Line } from '@react-three/drei';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
+import type { CameraState } from '../model/types';
+import { verticalFov } from '../model/lens';
+import { useStore } from '../store/store';
+import { ACCENT, viewportApi } from './shared';
+
+const FRUSTUM_DEPTH = 1.4;
+
+interface Props {
+  state: CameraState;
+  aspect: number;
+  selected?: boolean;
+  ghost?: boolean;
+  interactive?: boolean;
+}
+
+/** Orientation of a camera state as a quaternion (looks at target, then rolls). */
+export function cameraQuaternion(state: CameraState): THREE.Quaternion {
+  const m = new THREE.Matrix4().lookAt(
+    new THREE.Vector3(...state.position),
+    new THREE.Vector3(...state.target),
+    new THREE.Vector3(0, 1, 0),
+  );
+  const q = new THREE.Quaternion().setFromRotationMatrix(m);
+  return q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), state.roll));
+}
+
+/** The shot camera as seen in Director view: a small body and its view pyramid. */
+export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Props) {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const quaternion = useMemo(() => cameraQuaternion(state), [state]);
+  const frustum = useMemo(() => {
+    const fov = (verticalFov(state.focalLength, aspect) * Math.PI) / 180;
+    const h = Math.tan(fov / 2) * FRUSTUM_DEPTH;
+    const w = h * aspect;
+    const z = -FRUSTUM_DEPTH;
+    const c: [number, number, number][] = [
+      [-w, -h, z],
+      [w, -h, z],
+      [w, h, z],
+      [-w, h, z],
+    ];
+    const o: [number, number, number] = [0, 0, 0];
+    return [o, c[0], c[1], o, c[2], c[3], o, c[3], c[0], c[1], c[2], [0, h * 1.35, z], c[3]] as [
+      number,
+      number,
+      number,
+    ][];
+  }, [state.focalLength, aspect]);
+
+  const color = selected ? ACCENT : ghost ? '#8b9099' : '#d8dbe0';
+
+  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    viewportApi.pointerHitObject = true;
+    if (!interactive || e.button !== 0) return;
+    e.stopPropagation();
+    const store = useStore.getState();
+    if (store.playback) return;
+    store.selectCamera();
+    // Drag the camera across the floor; it keeps looking the same way.
+    const start = { ...state };
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -state.position[1]);
+    const rect = gl.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    const hit = (cx: number, cy: number) => {
+      ray.setFromCamera(
+        new THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1),
+        camera,
+      );
+      return ray.ray.intersectPlane(plane, new THREE.Vector3());
+    };
+    const grab = hit(e.clientX, e.clientY);
+    if (!grab) return;
+    let started = false;
+    const move = (ev: PointerEvent) => {
+      const p = hit(ev.clientX, ev.clientY);
+      if (!p) return;
+      if (!started) {
+        if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return;
+        started = true;
+        useStore.getState().beginGesture();
+      }
+      let dx = p.x - grab.x;
+      let dz = p.z - grab.z;
+      if (!ev.shiftKey) {
+        dx = Math.round((start.position[0] + dx) * 4) / 4 - start.position[0];
+        dz = Math.round((start.position[2] + dz) * 4) / 4 - start.position[2];
+      }
+      useStore.getState().setCamera({
+        ...start,
+        position: [start.position[0] + dx, start.position[1], start.position[2] + dz],
+        target: [start.target[0] + dx, start.target[1], start.target[2] + dz],
+      });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (started) useStore.getState().endGesture();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <group position={state.position} quaternion={quaternion}>
+      <group onPointerDown={onPointerDown}>
+        <mesh position={[0, 0, 0.12]}>
+          <boxGeometry args={[0.22, 0.2, 0.3]} />
+          <meshLambertMaterial color={color} transparent={ghost} opacity={ghost ? 0.3 : 1} />
+        </mesh>
+        <mesh position={[0, 0, -0.06]} rotation-x={Math.PI / 2}>
+          <cylinderGeometry args={[0.07, 0.08, 0.1, 16]} />
+          <meshLambertMaterial color="#3a3d44" transparent={ghost} opacity={ghost ? 0.3 : 1} />
+        </mesh>
+        {/* Invisible, larger hit area so the camera is easy to grab */}
+        <mesh position={[0, 0, -0.4]} visible={false}>
+          <boxGeometry args={[0.6, 0.5, 1]} />
+        </mesh>
+      </group>
+      <Line points={frustum} color={color} lineWidth={selected ? 2 : 1.2} transparent opacity={ghost ? 0.35 : 0.9} />
+    </group>
+  );
+}
