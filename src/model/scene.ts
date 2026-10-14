@@ -17,8 +17,11 @@ import { duplicateGroups, pruneGroups } from './groups';
 // ---------------------------------------------------------------------------
 
 export function phaseT(phase: ShotPhase): number {
-  return phase === 'start' ? 0 : 1;
+  return phase === 'start' ? 0 : phase === 'end' ? 1 : phase;
 }
+
+/** Times this close to a key count as that key. */
+export const KEY_EPSILON = 0.005;
 
 function lastValue<T>(keys: Key<T>[]): T {
   return keys[keys.length - 1].value;
@@ -137,6 +140,7 @@ function writeKey<T>(
   inherited: T,
   equal: (a: T, b: T) => boolean,
 ): Key<T>[] | null {
+  if (typeof phase === 'number') return writeMiddleKey(keys, phase, next, inherited, equal);
   let out: Key<T>[];
   if (!keys || keys.length === 0) {
     out =
@@ -147,6 +151,32 @@ function writeKey<T>(
     out = phase === 'start' ? keys.map((k) => ({ ...k, value: next })) : replaceAt(keys, keys.length - 1, next);
   } else {
     out = replaceAt(keys, phase === 'start' ? 0 : keys.length - 1, next);
+  }
+  if (isStatic(out, equal) && equal(out[0].value, inherited)) return null;
+  return out;
+}
+
+/**
+ * Writes a key at a time inside the shot: replaces a key already there, or
+ * inserts one that splits its segment (both halves keep that segment's easing).
+ * A shot without a track gets one that starts and ends at the inherited state.
+ */
+function writeMiddleKey<T>(
+  keys: Key<T>[] | undefined,
+  t: number,
+  next: T,
+  inherited: T,
+  equal: (a: T, b: T) => boolean,
+): Key<T>[] | null {
+  const base = keys && keys.length ? keys : [key(0, inherited), key(1, inherited)];
+  const at = base.findIndex((k) => Math.abs(k.t - t) < KEY_EPSILON);
+  let out: Key<T>[];
+  if (at >= 0) out = replaceAt(base, at, next);
+  else {
+    const after = base.findIndex((k) => k.t > t);
+    const i = after === -1 ? base.length : after;
+    const easing = base[Math.max(0, i - 1)].easing;
+    out = [...base.slice(0, i), { t, value: next, easing }, ...base.slice(i)];
   }
   if (isStatic(out, equal) && equal(out[0].value, inherited)) return null;
   return out;
@@ -265,7 +295,7 @@ export function moveShot(project: Project, from: number, to: number): void {
 }
 
 /** Keeps auto-generated names ("Shot N") in sync with order; custom names stay. */
-function renumberShots(project: Project): void {
+export function renumberShots(project: Project): void {
   project.shots.forEach((s, i) => {
     if (/^Shot \d+$/.test(s.name)) s.name = `Shot ${i + 1}`;
   });

@@ -192,3 +192,76 @@ test('filmmaker tools: cameras, framing, moves, guides, groups and export', asyn
 
   expect(errors).toEqual([]);
 });
+
+test('fast motion: timeline steps, split, drawn path, take and music', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const store = <T>(fn: string) => page.evaluate(`(${fn})(window.__store.getState())`) as Promise<T>;
+
+  await page.getByRole('button', { name: 'Add' }).click();
+  await page.locator('.shape-tile', { hasText: 'Person' }).click();
+
+  // Timeline: drag the playhead into the shot, then move the person: a middle step appears.
+  await page.locator('.timeline-toggle').click();
+  await expect(page.locator('.timeline')).toBeVisible();
+  const ruler = (await page.locator('.tl-ruler').boundingBox())!;
+  await page.mouse.click(ruler.x + ruler.width * 0.5, ruler.y + ruler.height / 2);
+  expect(await store<number>('s => s.phase')).toBeCloseTo(0.5, 1);
+  await page.evaluate(() => {
+    const s = (window as any).__store.getState();
+    const o = s.project.objects[0];
+    s.setObjectStates({ [o.id]: { ...o.base, position: [2, 0, 0] } });
+  });
+  expect(await store<number>('s => s.project.shots[0].objectTracks[s.project.objects[0].id].length')).toBe(3);
+  await expect(page.locator('.tl-key')).toHaveCount(3);
+
+  // Change how the first stretch moves.
+  await page.locator('.tl-seg.moving').first().click();
+  await page.locator('.easing-menu .menu-item', { hasText: 'Linear' }).click();
+  expect(await store<string>('s => s.project.shots[0].objectTracks[s.project.objects[0].id][0].easing')).toBe('linear');
+
+  // Split at the playhead.
+  await page.locator('.timeline button', { hasText: 'Split here' }).click();
+  await expect(page.locator('.shot-card')).toHaveCount(2);
+  expect(await store<number[]>('s => s.project.shots.map((x) => x.duration)')).toEqual([1.5, 1.5]);
+
+  // Draw a path for the person in the second shot.
+  await page.locator('.timeline-toggle').click();
+  await page.evaluate(() => {
+    const s = (window as any).__store.getState();
+    s.select([s.project.objects[0].id]);
+  });
+  await page.locator('.context-panel button', { hasText: 'Draw path' }).click();
+  await page.mouse.move(600, 500);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(600 + i * 20, 500 - Math.sin(i / 3) * 40);
+  await page.mouse.up();
+  expect(await store<number>('s => s.project.shots[1].objectTracks[s.project.objects[0].id].length')).toBeGreaterThan(2);
+
+  // Record a take: press, drag, let go.
+  await page.locator('.context-panel button', { hasText: 'Record' }).click();
+  await expect(page.locator('.take-overlay')).toBeVisible();
+  await page.mouse.move(700, 450);
+  await page.mouse.down();
+  for (let i = 0; i < 10; i++) {
+    await page.mouse.move(700 + i * 15, 450);
+    await page.waitForTimeout(40);
+  }
+  await page.mouse.up();
+  await expect(page.locator('.take-overlay')).toHaveCount(0);
+  const takeKeys = await store<number[]>('s => s.project.shots[1].objectTracks[s.project.objects[0].id].map((k) => k.t)');
+  expect(takeKeys[0]).toBe(0);
+  expect(takeKeys[takeKeys.length - 1]).toBe(1);
+
+  // Music: beats found, waveform under each card.
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Add music…' }).click();
+  await (await chooser).setFiles('tests/e2e/fixtures/beat120.wav');
+  await page.waitForFunction(() => !!(window as any).__store.getState().project.audio);
+  // A click every half second for 4 s.
+  expect(await store<number>('s => s.project.audio.beats.length')).toBeGreaterThanOrEqual(6);
+  await expect(page.locator('canvas.waveform')).toHaveCount(2);
+
+  expect(errors).toEqual([]);
+});

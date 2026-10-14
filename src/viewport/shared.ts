@@ -41,24 +41,37 @@ interface Transient {
   /** Alignment guides on the floor, as [x1, z1, x2, z2] segments. */
   guides: [number, number, number, number][];
   hoverId: string | null;
-  /** Drawing an arrow on the floor: the next drag on the floor draws one. */
-  tool: 'arrow' | null;
+  /** Drawing on the floor: the next drag draws an arrow, or a path for `pathTarget`. */
+  tool: 'arrow' | 'path' | null;
+  /** What a drawn path moves: an object id, or 'camera' for the shot camera. */
+  pathTarget: string | null;
+  /** The path being drawn, as floor points (x, z). */
+  pathDraft: [number, number][] | null;
+  /** Where the object being performed in a take is right now (x, z), and its heading. */
+  takePos: { x: number; z: number; heading: number | null } | null;
   /** The arrow being drawn, as [x1, z1, x2, z2]. */
   arrowDraft: [number, number, number, number] | null;
   radial: { x: number; y: number; target: RadialTarget } | null;
   cameraTab: CameraTab;
   cameraChip: CameraChip | null;
   exportOpen: boolean;
+  timelineOpen: boolean;
+  /** Bumped when a soundtrack finishes decoding, so waveforms redraw. */
+  audioVersion: number;
   setDragging(v: boolean): void;
   setGuides(g: [number, number, number, number][]): void;
   setHover(id: string | null): void;
-  setTool(tool: 'arrow' | null): void;
+  setTool(tool: 'arrow' | 'path' | null, pathTarget?: string): void;
+  setPathDraft(d: [number, number][] | null): void;
+  setTakePos(p: { x: number; z: number; heading: number | null } | null): void;
   setArrowDraft(d: [number, number, number, number] | null): void;
   openRadial(x: number, y: number, target: RadialTarget): void;
   closeRadial(): void;
   setCameraTab(tab: CameraTab): void;
   setCameraChip(chip: CameraChip | null): void;
   setExportOpen(open: boolean): void;
+  setTimelineOpen(open: boolean): void;
+  bumpAudio(): void;
 }
 
 export const useTransient = create<Transient>()((set) => ({
@@ -66,27 +79,36 @@ export const useTransient = create<Transient>()((set) => ({
   guides: [],
   hoverId: null,
   tool: null,
+  pathTarget: null,
+  pathDraft: null,
+  takePos: null,
   arrowDraft: null,
   radial: null,
   cameraTab: 'lens',
   cameraChip: null,
   exportOpen: false,
+  timelineOpen: false,
+  audioVersion: 0,
   setDragging: (dragging) => set({ dragging }),
   setGuides: (guides) => set({ guides }),
   setHover: (hoverId) => {
     if (viewportApi.canvas && !useTransient.getState().tool) viewportApi.canvas.style.cursor = hoverId ? 'grab' : '';
     set({ hoverId });
   },
-  setTool: (tool) => {
+  setTool: (tool, pathTarget) => {
     if (viewportApi.canvas) viewportApi.canvas.style.cursor = tool ? 'crosshair' : '';
-    set({ tool, arrowDraft: null });
+    set({ tool, pathTarget: tool === 'path' ? (pathTarget ?? null) : null, arrowDraft: null, pathDraft: null });
   },
+  setPathDraft: (pathDraft) => set({ pathDraft }),
+  setTakePos: (takePos) => set({ takePos }),
   setArrowDraft: (arrowDraft) => set({ arrowDraft }),
   openRadial: (x, y, target) => set({ radial: { x, y, target } }),
   closeRadial: () => set({ radial: null }),
   setCameraTab: (cameraTab) => set({ cameraTab }),
   setCameraChip: (cameraChip) => set({ cameraChip }),
   setExportOpen: (exportOpen) => set({ exportOpen }),
+  setTimelineOpen: (timelineOpen) => set({ timelineOpen }),
+  bumpAudio: () => set((s) => ({ audioVersion: s.audioVersion + 1 })),
 }));
 
 /**

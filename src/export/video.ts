@@ -1,12 +1,15 @@
 import {
+  AudioBufferSource,
   BufferTarget,
   CanvasSource,
   Mp4OutputFormat,
   Output,
   QUALITY_HIGH,
   WebMOutputFormat,
+  canEncodeAudio,
   canEncodeVideo,
 } from 'mediabunny';
+import { renderForFilm } from '../audio/soundtrack';
 import type { Fps, Project } from '../model/types';
 import { aspectValue } from '../model/lens';
 import { locateTime, totalDuration } from '../model/scene';
@@ -30,8 +33,9 @@ export class ExportCancelled extends Error {}
 
 /**
  * Renders the whole film frame by frame through each shot's camera and encodes
- * it with the platform's H.264 encoder (WebCodecs) into an MP4. Where H.264 is
- * not available it falls back to VP9 in WebM.
+ * it with the platform's H.264 encoder (WebCodecs) into an MP4, with the
+ * soundtrack (AAC, or Opus where AAC can't be encoded). Where H.264 is not
+ * available it falls back to VP9 in WebM.
  */
 export async function exportVideo(
   project: Project,
@@ -55,9 +59,22 @@ export async function exportVideo(
   });
   const source = new CanvasSource(canvas, { codec: mp4 ? 'avc' : 'vp9', quality: QUALITY_HIGH });
   output.addVideoTrack(source, { frameRate: opts.fps });
-  await output.start();
 
-  const frames = Math.max(1, Math.round(totalDuration(project) * opts.fps));
+  // The soundtrack, cut to the film's length.
+  const film = totalDuration(project);
+  const music = await renderForFilm(project.audio, film);
+  let audioSource: AudioBufferSource | null = null;
+  if (music) {
+    const aac = mp4 && (await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: music.sampleRate }));
+    if (aac || (await canEncodeAudio('opus', { numberOfChannels: 2, sampleRate: music.sampleRate }))) {
+      audioSource = new AudioBufferSource({ codec: aac ? 'aac' : 'opus', quality: QUALITY_HIGH });
+      output.addAudioTrack(audioSource);
+    }
+  }
+  await output.start();
+  if (audioSource && music) await audioSource.add(music);
+
+  const frames = Math.max(1, Math.round(film * opts.fps));
   try {
     for (let i = 0; i < frames; i++) {
       if (signal.aborted) throw new ExportCancelled();

@@ -102,7 +102,9 @@ function useAnchorToSelection(ref: React.RefObject<HTMLDivElement | null>, activ
         sy = (top + bottom) / 2 - el.offsetHeight / 2;
       }
       sx = Math.max(84, Math.min(sx, window.innerWidth - w - 12));
-      sy = Math.max(TOP_BAR_HEIGHT + 8, Math.min(sy, window.innerHeight - STRIP_HEIGHT - el.offsetHeight - 16));
+      // Stay above the shot strip, and above the timeline when it is open.
+      const floor = document.querySelector('.timeline')?.getBoundingClientRect().top ?? window.innerHeight - STRIP_HEIGHT;
+      sy = Math.max(TOP_BAR_HEIGHT + 8, Math.min(sy, floor - el.offsetHeight - 16));
       el.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy)}px)`;
     };
     loop();
@@ -130,6 +132,7 @@ function ObjectSection({ ids }: { ids: string[] }) {
   const group = selectedGroup(project, ids);
   const canGroup = new Set(ids.map((id) => topLevelOf(project, id))).size >= 2;
   const frameable = objs.find((o) => o.kind !== 'arrow' && o.kind !== 'label');
+  const movable = single && single.kind !== 'label' && !single.locked ? single : null;
 
   const updateDefs = (fn: (o: SceneObject) => void) =>
     apply((d) => d.objects.filter((o) => ids.includes(o.id)).forEach(fn));
@@ -200,6 +203,27 @@ function ObjectSection({ ids }: { ids: string[] }) {
         >
           <Icon.still /> Remove motion
         </button>
+      )}
+      {movable && (
+        <div className="row-btns">
+          <button
+            className="text-btn"
+            title="Draw a path on the floor; it follows it through the shot"
+            onClick={() => {
+              useTransient.getState().setTool('path', movable.id);
+              useStore.getState().notify('Draw the path on the floor. Esc cancels.');
+            }}
+          >
+            <Icon.path /> Draw path
+          </button>
+          <button
+            className="text-btn"
+            title="Perform the move: drag it while the shot plays"
+            onClick={() => useStore.getState().startTake(movable.id)}
+          >
+            <Icon.record /> Record
+          </button>
+        </div>
       )}
       {(canGroup || group || frameable) && (
         <div className="row-btns">

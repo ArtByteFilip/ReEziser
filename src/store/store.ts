@@ -15,11 +15,17 @@ import {
 } from '../model/framing';
 import { applyCameraMove, parseMoveId, type MoveDirection, type MoveKind } from '../model/cameraMoves';
 import { createGroup, expandToGroups, ungroup } from '../model/groups';
+import { splitShot } from '../model/timeline';
+import { cameraPathKeys, pathKeys, takeKeys, type TakeSample } from '../model/paths';
+
+/** Samples of the take in progress; not state, since nothing renders them. */
+let takeSamples: TakeSample[] = [];
 import {
   cameraStateAt,
   deleteObjects,
   duplicateObjects,
   insertShot,
+  KEY_EPSILON,
   locateTime,
   objectStateAt,
   phaseT,
@@ -41,6 +47,18 @@ export interface Playback {
   returnTo: ViewMode;
 }
 
+/** A live performance (● Record): the shot plays while the user drags an object. */
+export interface Take {
+  objectId: string;
+  shotIndex: number;
+  /** Seconds into the shot. */
+  time: number;
+  /** Time only runs while the user is dragging. */
+  running: boolean;
+  /** The object's state at the start of the shot. */
+  start: ObjectState;
+}
+
 export interface Hint {
   id: string;
   text: string;
@@ -57,6 +75,7 @@ interface State {
   subjectId: string | null;
   viewMode: ViewMode;
   playback: Playback | null;
+  take: Take | null;
   hint: Hint | null;
   seenHints: string[];
   canUndo: boolean;
@@ -82,7 +101,10 @@ interface Actions {
   selectCamera(id?: string): void;
   clearSelection(): void;
   selectShot(index: number): void;
+  /** 'start', 'end', or a time inside the shot (0..1) to edit a middle key. */
   setPhase(phase: ShotPhase): void;
+  /** Splits the current shot at t (default: the edit time, else the middle). */
+  splitShot(t?: number): void;
   setViewMode(mode: ViewMode): void;
 
   addObject(kind: ObjectKind): void;
@@ -106,6 +128,18 @@ interface Actions {
   frameShot(type: ShotType, angle?: CameraAngle): void;
   setAngle(angle: CameraAngle): void;
   applyMove(kind: MoveKind, dir: MoveDirection): void;
+
+  /** Carries an object (or the shot camera) along a path drawn on the floor, over the whole shot. */
+  applyPath(target: string | 'camera', points: [number, number][]): void;
+  /** Starts a take: the current shot waits at its start until the user drags. */
+  startTake(objectId: string): void;
+  /** The user pressed: the shot starts playing and samples are recorded. */
+  runTake(): void;
+  /** Records where the performed object is now. */
+  recordTakeSample(x: number, z: number): void;
+  /** Turns the take into keys (one undo step) and returns to editing. */
+  finishTake(): void;
+  cancelTake(): void;
 
   play(fromShot?: number): void;
   loopShot(): void;
@@ -154,6 +188,7 @@ export const useStore = create<Store>()((set, get) => ({
   subjectId: null,
   viewMode: 'director',
   playback: null,
+  take: null,
   hint: null,
   seenHints: [],
   canUndo: false,
@@ -238,7 +273,22 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   setPhase(phase) {
+    // Times at the very ends are the ends, so the Start/End rules apply there.
+    if (typeof phase === 'number') {
+      if (phase <= KEY_EPSILON) phase = 'start';
+      else if (phase >= 1 - KEY_EPSILON) phase = 'end';
+    }
     set({ phase });
+  },
+
+  splitShot(t) {
+    const { shotIndex, phase } = get();
+    const at = t ?? (typeof phase === 'number' ? phase : 0.5);
+    let index = -1;
+    get().apply((d) => {
+      index = splitShot(d, shotIndex, at);
+    });
+    if (index >= 0) set({ shotIndex: index, phase: 'start' });
   },
 
   setViewMode(mode) {
@@ -412,6 +462,81 @@ export const useStore = create<Store>()((set, get) => ({
     if (kind !== 'static') s.showHint('move-end', 'Switch to End to fine-tune where the move ends.');
   },
 
+  applyPath(target, points) {
+    const s = get();
+    const { project, shotIndex } = s;
+    const shot = project.shots[shotIndex];
+    if (target === 'camera') {
+      const keys = cameraPathKeys(points, cameraStateAt(project, shotIndex, 'start'));
+      if (!keys.length) return s.notify('Draw a longer path.');
+      s.apply((d) => {
+        d.shots[shotIndex].cameraTrack = keys;
+        delete d.shots[shotIndex].cameraMove;
+      });
+    } else {
+      const obj = project.objects.find((o) => o.id === target);
+      if (!obj) return;
+      const keys = pathKeys(points, objectStateAt(project, shotIndex, 'start', obj), {
+        isFigure: obj.kind === 'figure',
+        duration: shot.duration,
+      });
+      if (!keys.length) return s.notify('Draw a longer path.');
+      s.apply((d) => {
+        d.shots[shotIndex].objectTracks[target] = keys;
+      });
+    }
+    s.showHint('path-play', 'Press L to watch the shot. The timeline (˄) shows the steps along the path.');
+  },
+
+  startTake(objectId) {
+    const { project, shotIndex, playback } = get();
+    const obj = project.objects.find((o) => o.id === objectId);
+    if (!obj || playback) return;
+    takeSamples = [];
+    set({
+      take: { objectId, shotIndex, time: 0, running: false, start: objectStateAt(project, shotIndex, 'start', obj) },
+      selection: [],
+      selectedCameraId: null,
+    });
+  },
+
+  runTake() {
+    const { take } = get();
+    if (take && !take.running) set({ take: { ...take, running: true } });
+  },
+
+  recordTakeSample(x, z) {
+    const { take, project } = get();
+    if (!take?.running) return;
+    takeSamples.push({ t: take.time / project.shots[take.shotIndex].duration, x, z });
+  },
+
+  finishTake() {
+    const { take, project } = get();
+    if (!take) return;
+    const obj = project.objects.find((o) => o.id === take.objectId);
+    const keys =
+      obj && takeSamples.length > 1
+        ? takeKeys(takeSamples, take.start, {
+            isFigure: obj.kind === 'figure',
+            duration: project.shots[take.shotIndex].duration,
+          })
+        : [];
+    takeSamples = [];
+    set({ take: null, selection: obj ? [obj.id] : [] });
+    if (!keys.length) return;
+    get().apply((d) => {
+      d.shots[take.shotIndex].objectTracks[take.objectId] = keys;
+    });
+    get().notify('Take recorded. Press L to watch it, or record again.');
+  },
+
+  cancelTake() {
+    takeSamples = [];
+    const { take } = get();
+    set({ take: null, selection: take ? [take.objectId] : [] });
+  },
+
   play(fromShot) {
     const { project, viewMode } = get();
     const time = fromShot === undefined ? 0 : shotStartTime(project, fromShot);
@@ -434,7 +559,15 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   tick(dt) {
-    const { playback, project } = get();
+    const { playback, project, take } = get();
+    if (take) {
+      if (!take.running) return;
+      const duration = project.shots[take.shotIndex].duration;
+      const time = Math.min(duration, take.time + dt);
+      set({ take: { ...take, time } });
+      if (time >= duration) get().finishTake();
+      return;
+    }
     if (!playback) return;
     let time = playback.time + dt;
     if (playback.loopShot !== null) {
@@ -492,10 +625,11 @@ function maybeHintEnd(get: () => Store): void {
 }
 
 /** The shot and normalized time currently shown in the viewport. */
-export function currentFrame(s: Pick<State, 'project' | 'shotIndex' | 'phase' | 'playback'>): {
+export function currentFrame(s: Pick<State, 'project' | 'shotIndex' | 'phase' | 'playback'> & { take?: Take | null }): {
   shotIndex: number;
   t: number;
 } {
+  if (s.take) return { shotIndex: s.take.shotIndex, t: s.take.time / s.project.shots[s.take.shotIndex].duration };
   if (s.playback) return locateTime(s.project, s.playback.time);
   return { shotIndex: s.shotIndex, t: phaseT(s.phase) };
 }

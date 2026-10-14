@@ -11,8 +11,10 @@ import { ContextPanel } from './ui/ContextPanel';
 import { ShotStrip } from './ui/ShotStrip';
 import { CameraOverlay } from './ui/CameraOverlay';
 import { SceneLabels } from './ui/SceneLabels';
-import { HintToast, MarqueeLayer, PlaybackOverlay } from './ui/Overlays';
+import { HintToast, MarqueeLayer, PlaybackOverlay, TakeOverlay } from './ui/Overlays';
 import { RadialMenu } from './ui/RadialMenu';
+import { Timeline } from './ui/Timeline';
+import { useSoundtrack } from './audio/useSoundtrack';
 import { useTransient } from './viewport/shared';
 import { openProjectFlow, saveProjectFlow } from './ui/fileActions';
 
@@ -20,28 +22,33 @@ const AUTOSAVE_MS = 30_000;
 
 export function App() {
   const playing = useStore((s) => !!s.playback);
+  const taking = useStore((s) => !!s.take);
   const cameraView = useStore((s) => s.viewMode === 'camera');
+  const timelineOpen = useTransient((s) => s.timelineOpen);
   useShortcuts();
   useAutosave();
   useWindowTitle();
+  useSoundtrack();
 
   return (
-    <div className={`app${playing ? ' playing' : ''}${cameraView ? ' camera-view' : ''}`}>
+    <div className={`app${playing ? ' playing' : ''}${cameraView ? ' camera-view' : ''}${timelineOpen && !playing ? ' timeline-open' : ''}`}>
       <MarqueeLayer>
         <Viewport />
       </MarqueeLayer>
       <SceneLabels />
       <CameraOverlay />
-      {!playing && (
+      {!playing && !taking && (
         <>
           <TopBar />
           <AddPalette />
           <ContextPanel />
           <ShotStrip />
+          {timelineOpen && <Timeline />}
           <RadialMenu />
         </>
       )}
       <PlaybackOverlay />
+      <TakeOverlay />
       <HintToast />
     </div>
   );
@@ -87,6 +94,11 @@ function useShortcuts() {
         return;
       }
 
+      if (s.take) {
+        if (key === 'escape') s.cancelTake();
+        e.preventDefault();
+        return;
+      }
       if (s.playback) {
         if (key === 'escape') s.stop();
         if (key === ' ' || key === 'l') e.preventDefault();
@@ -135,6 +147,7 @@ function useShortcuts() {
       heldKeys.delete(key);
       if (isTyping(e.target)) return;
       const s = useStore.getState();
+      if (s.take) return;
       if (key === ' ') {
         e.preventDefault();
         if (spaceUsedForPan) return;

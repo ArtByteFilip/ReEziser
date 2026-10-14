@@ -147,6 +147,36 @@ export const Icon = {
       <circle cx="4.5" cy="18" r="0.9" fill="currentColor" />
     </Svg>
   ),
+  split: () => (
+    <Svg size={18}>
+      <path d="M12 3v18" strokeDasharray="2.5 2.5" />
+      <rect x="3" y="7" width="6" height="10" rx="1.5" />
+      <rect x="15" y="7" width="6" height="10" rx="1.5" />
+    </Svg>
+  ),
+  chevronDown: () => (
+    <Svg size={18}>
+      <path d="M6 9l6 6 6-6" />
+    </Svg>
+  ),
+  chevronUp: () => (
+    <Svg size={18}>
+      <path d="M6 15l6-6 6 6" />
+    </Svg>
+  ),
+  path: () => (
+    <Svg size={18}>
+      <circle cx="5" cy="18" r="2" />
+      <path d="M7 17c5-1 2-8 7-9s4 3 6-2" strokeDasharray="0" />
+      <path d="M17 4l3 2-2 3" />
+    </Svg>
+  ),
+  record: () => (
+    <Svg size={18}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" fill="#ff5c5c" stroke="none" />
+    </Svg>
+  ),
   // Shape palette
   arrow: () => (
     <Svg size={28}>

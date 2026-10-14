@@ -164,7 +164,19 @@ export function MoveTools() {
           ))}
         </div>
       )}
-      {moving && !current && <div className="tool-note">Moves the way you set Start and End.</div>}
+      {moving && !current && <div className="tool-note">Moves the way you set it up (Start, End or a drawn path).</div>}
+      <button
+        className="text-btn"
+        title="Draw the camera's track on the floor; it keeps its height and direction"
+        onClick={() => {
+          useStore.getState().clearSelection();
+          useTransient.getState().setCameraChip(null);
+          useTransient.getState().setTool('path', 'camera');
+          useStore.getState().notify('Draw the camera path on the floor. Esc cancels.');
+        }}
+      >
+        <Icon.path /> Draw a camera path
+      </button>
     </div>
   );
 }

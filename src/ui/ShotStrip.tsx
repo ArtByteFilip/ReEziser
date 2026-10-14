@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { aspectValue } from '../model/lens';
-import { deleteShot, duplicateShot, moveShot } from '../model/scene';
+import { deleteShot, duplicateShot, moveShot, shotStartTime } from '../model/scene';
+import { snapToBeat } from '../model/audio';
+import { Waveform } from './Waveform';
 import { crossesAxis } from '../model/axis';
 import { shotTypeInfo } from '../model/framing';
 import { moveLabel } from '../model/cameraMoves';
 import type { Shot } from '../model/types';
 import { Icon } from './icons';
+import { useTransient } from '../viewport/shared';
+import { phaseLabel } from './CameraOverlay';
 
 const CARD_HEIGHT = 66;
 const MIN_DURATION = 0.5;
+/** With music, cards are this many pixels per second of shot, so the waveform lines up. */
+export const PX_PER_SECOND = 40;
+/** How close (seconds) a dragged shot edge must come to a beat to snap to it. */
+const BEAT_SNAP = 0.15;
 
 /** The row of shots at the bottom, plus the Start | End switch for the selected one. */
 export function ShotStrip() {
@@ -22,29 +30,50 @@ export function ShotStrip() {
   const phase = useStore((s) => s.phase);
   const setPhase = useStore((s) => s.setPhase);
   const newShot = useStore((s) => s.newShot);
+  const duration = project.shots[shotIndex].duration;
+  const timelineOpen = useTransient((s) => s.timelineOpen);
+  const setTimelineOpen = useTransient((s) => s.setTimelineOpen);
   const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   const [reorder, setReorder] = useState<{ from: number; to: number } | null>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
 
   const cardWidth = Math.round(Math.min(150, Math.max(54, CARD_HEIGHT * aspect)));
+  // With music the strip becomes a time scale: card width follows the length.
+  const timeScale = !!project.audio?.data;
 
   return (
     <div className="strip-area">
-      <div className="phase-switch segmented" role="tablist" aria-label="Edit the start or end of the shot">
-        <button className={phase === 'start' ? 'on' : ''} onClick={() => setPhase('start')} title="Edit how the shot starts">
-          Start
-        </button>
-        <button className={phase === 'end' ? 'on end' : ''} onClick={() => setPhase('end')} title="Edit how the shot ends">
-          End
+      <div className="strip-controls">
+        <div className="phase-switch segmented" role="tablist" aria-label="Edit the start or end of the shot">
+          <button className={phase === 'start' ? 'on' : ''} onClick={() => setPhase('start')} title="Edit how the shot starts">
+            Start
+          </button>
+          {typeof phase === 'number' && (
+            <button className="on mid" title="Editing a step inside the shot (set in the timeline)">
+              {phaseLabel(phase, duration)}
+            </button>
+          )}
+          <button className={phase === 'end' ? 'on end' : ''} onClick={() => setPhase('end')} title="Edit how the shot ends">
+            End
+          </button>
+        </div>
+        <button
+          className={`icon-btn timeline-toggle${timelineOpen ? ' active' : ''}`}
+          title={timelineOpen ? 'Hide the timeline' : 'Timeline: steps in between and how things speed up (or double-click a shot)'}
+          aria-label="Timeline"
+          onClick={() => setTimelineOpen(!timelineOpen)}
+        >
+          {timelineOpen ? <Icon.chevronDown /> : <Icon.chevronUp />}
         </button>
       </div>
-      <div className="strip" ref={cardsRef}>
+      <div className={`strip${timeScale ? ' has-music' : ''}`} ref={cardsRef}>
         {shots.map((shot, i) => (
           <ShotCard
             key={shot.id}
             shot={shot}
             index={i}
-            width={cardWidth}
+            width={timeScale ? Math.max(54, Math.round(shot.duration * PX_PER_SECOND)) : cardWidth}
+            timeScale={timeScale}
             selected={i === shotIndex}
             crosses={crossings[i]}
             dropBefore={reorder !== null && reorder.to === i && reorder.from !== i && reorder.from !== i - 1}
@@ -64,6 +93,7 @@ export function ShotStrip() {
 }
 
 interface CardProps {
+  timeScale: boolean;
   shot: Shot;
   index: number;
   width: number;
@@ -76,7 +106,7 @@ interface CardProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-function ShotCard({ shot, index, width, selected, crosses, dropBefore, dropAfter, onMenu, onReorder, containerRef }: CardProps) {
+function ShotCard({ shot, index, width, timeScale, selected, crosses, dropBefore, dropAfter, onMenu, onReorder, containerRef }: CardProps) {
   const thumb = useStore((s) => s.thumbnails[shot.id]);
   const selectShot = useStore((s) => s.selectShot);
   const playingHere = useStore((s) => s.playback !== null && s.shotIndex === index);
@@ -135,11 +165,18 @@ function ShotCard({ shot, index, width, selected, crosses, dropBefore, dropAfter
         useStore.getState().beginGesture();
       }
       const step = ev.shiftKey ? 0.1 : 0.5;
-      const raw = d0 + (ev.clientX - x0) / 40;
-      const next = Math.max(MIN_DURATION, Math.round(raw / step) * step);
+      const raw = d0 + (ev.clientX - x0) / PX_PER_SECOND;
+      let next = Math.max(MIN_DURATION, Math.round(raw / step) * step);
+      // With music, the shot's end snaps to a nearby beat (Shift: free).
+      const { project } = useStore.getState();
+      if (!ev.shiftKey && project.audio) {
+        const start = shotStartTime(project, index);
+        const beat = snapToBeat(start + raw, project.audio.beats, project.audio.offset, BEAT_SNAP);
+        if (beat !== null && beat - start >= MIN_DURATION) next = beat - start;
+      }
       useStore.getState().apply((d) => {
         const s = d.shots.find((x) => x.id === shot.id);
-        if (s && s.duration !== next) s.duration = Math.round(next * 10) / 10;
+        if (s && s.duration !== next) s.duration = Math.round(next * 1000) / 1000;
       });
     };
     const up = () => {
@@ -160,6 +197,10 @@ function ShotCard({ shot, index, width, selected, crosses, dropBefore, dropAfter
         e.preventDefault();
         selectShot(index);
         onMenu(e.clientX, e.clientY);
+      }}
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest('.shot-name, .shot-name-input')) return;
+        useTransient.getState().setTimelineOpen(true);
       }}
       data-playing={playingHere || undefined}
       title={summary || undefined}
@@ -192,6 +233,7 @@ function ShotCard({ shot, index, width, selected, crosses, dropBefore, dropAfter
         )}
         <span className="shot-dur">{shot.duration.toFixed(1)}s</span>
       </div>
+      {timeScale && <Waveform index={index} width={width} />}
     </div>
   );
 }
@@ -253,6 +295,17 @@ function ShotMenu({ index, x, y, onClose }: { index: number; x: number; y: numbe
         }}
       >
         Duplicate
+      </button>
+      <button
+        className="menu-item"
+        title="Cut the shot in two in the middle (the timeline can cut at any moment)"
+        onClick={() => {
+          selectShot(index);
+          useStore.getState().splitShot(0.5);
+          onClose();
+        }}
+      >
+        Split
       </button>
       <button
         className="menu-item"

@@ -160,7 +160,16 @@ export async function writeAutosave(project: Project): Promise<void> {
   const text = serializeProject(project);
   try {
     if (desktop) await desktop.writeAutosave(text);
-    else localStorage.setItem(AUTOSAVE_KEY, text);
+    else {
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, text);
+      } catch {
+        // Browser storage is small: keep at least the scene, without the music itself.
+        const { audio, ...rest } = project;
+        const light = audio ? { ...rest, audio: { ...audio, data: undefined } } : rest;
+        localStorage.setItem(AUTOSAVE_KEY, serializeProject(light as Project));
+      }
+    }
   } catch {
     // Storage can be unavailable (private mode, quota, disk); autosave is best effort.
   }

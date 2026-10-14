@@ -61,19 +61,32 @@ function SceneContent() {
   const selectedCameraId = useStore((s) => s.selectedCameraId);
   const showAxis = useSettings((s) => s.guides.axis);
   const arrowDraft = useTransient((s) => s.arrowDraft);
+  const pathDraft = useTransient((s) => s.pathDraft);
+  const take = useStore((s) => s.take);
+  const takePos = useTransient((s) => s.takePos);
   const hoverId = useTransient((s) => s.hoverId);
   const setHover = useTransient((s) => s.setHover);
   const guides = useTransient((s) => s.guides);
   const { onPointerDown, onDoubleClick } = useObjectDrag();
 
-  const states = useMemo(() => resolveFrame(project, shotIndex, t), [project, shotIndex, t]);
+  const states = useMemo(() => {
+    const out = resolveFrame(project, shotIndex, t);
+    // The object being performed follows the pointer, not its track.
+    if (take) {
+      const base = take.start;
+      out[take.objectId] = takePos
+        ? { ...base, position: [takePos.x, base.position[1], takePos.z], rotationY: takePos.heading ?? base.rotationY }
+        : base;
+    }
+    return out;
+  }, [project, shotIndex, t, take, takePos]);
   const shot = project.shots[shotIndex];
   const selected = useMemo(() => new Set(selection), [selection]);
   const aspect = aspectValue(project.aspectRatio);
 
   // Ghosts of the other end of the shot, and the motion path between them.
   const motion = useMemo(() => {
-    if (playing) return [];
+    if (playing || take) return [];
     const otherPhase = phase === 'start' ? 'end' : 'start';
     return project.objects
       .filter((o) => hasMotion(shot, o.id))
@@ -86,14 +99,14 @@ function SceneContent() {
         }
         return { obj: o, ghost: objectStateAt(project, shotIndex, otherPhase, o), path };
       });
-  }, [project, shot, shotIndex, phase, playing]);
+  }, [project, shot, shotIndex, phase, playing, take]);
 
   const cameraMotion = useMemo(() => {
-    if (playing || !cameraHasMotion(shot)) return null;
+    if (playing || take || !cameraHasMotion(shot)) return null;
     const path: Vec3[] = [];
     for (let i = 0; i <= 32; i++) path.push(evaluateCameraTrack(shot.cameraTrack, i / 32).position);
     return { ghost: resolveCamera(project, shotIndex, phase === 'start' ? 1 : 0), path };
-  }, [project, shot, shotIndex, phase, playing]);
+  }, [project, shot, shotIndex, phase, playing, take]);
 
   const axis = useMemo(() => {
     if (!showAxis) return null;
@@ -161,6 +174,9 @@ function SceneContent() {
           opacity={0.7}
         />
       ))}
+      {pathDraft && pathDraft.length > 1 && (
+        <Line points={pathDraft.map(([x, z]) => [x, 0.03, z] as Vec3)} color={ACCENT} lineWidth={3} />
+      )}
       {arrowDraft && (
         <Line
           points={[
@@ -335,11 +351,15 @@ function Cameras() {
   );
 }
 
-/** Advances film time while playing. */
+/** Advances film time while playing or performing a take, and records the take. */
 function PlaybackClock() {
   const tick = useStore((s) => s.tick);
   useFrame((_, dt) => {
-    if (useStore.getState().playback) tick(Math.min(dt, 0.25));
+    const s = useStore.getState();
+    if (!s.playback && !s.take) return;
+    tick(Math.min(dt, 0.25));
+    const pos = useTransient.getState().takePos;
+    if (pos) useStore.getState().recordTakeSample(pos.x, pos.z);
   });
   return null;
 }

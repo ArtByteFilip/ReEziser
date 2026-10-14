@@ -38,6 +38,30 @@ export function PlaybackOverlay() {
   );
 }
 
+/** While performing a take: what to do, the shot's progress, and how to get out. */
+export function TakeOverlay() {
+  const take = useStore((s) => s.take);
+  const duration = useStore((s) => (s.take ? s.project.shots[s.take.shotIndex].duration : 1));
+  const name = useStore((s) => (s.take ? s.project.objects.find((o) => o.id === s.take!.objectId)?.name : ''));
+  if (!take) return null;
+  return (
+    <div className="take-overlay">
+      <div className="take-badge">
+        <span className={`rec-dot${take.running ? ' live' : ''}`} />
+        {take.running ? 'Recording' : 'Ready'} · {name}
+      </div>
+      <div className="take-hint">
+        {take.running
+          ? 'Keep holding and move. Let go to finish.'
+          : 'Press anywhere and drag: the shot plays while you hold, and the move is recorded. Esc cancels.'}
+      </div>
+      <div className="take-progress">
+        <div style={{ width: `${(take.time / duration) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export function HintToast() {
   const hint = useStore((s) => s.hint);
   const dismiss = useStore((s) => s.dismissHint);
@@ -65,15 +89,23 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
 
   const onPointerDownCapture = (e: React.PointerEvent) => {
     viewportApi.pointerHitObject = false;
-    if (useTransient.getState().tool === 'arrow' && e.button === 0) {
-      // Drawing wins over picking: keep the event away from objects and orbiting.
+    const tool = useTransient.getState().tool;
+    if (e.button !== 0) return;
+    // Drawing and performing win over picking: keep the event away from objects and orbiting.
+    if (useStore.getState().take) {
+      e.stopPropagation();
+      performTake(e);
+    } else if (tool === 'arrow') {
       e.stopPropagation();
       drawArrow(e);
+    } else if (tool === 'path') {
+      e.stopPropagation();
+      drawPath(e);
     }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || viewportApi.pointerHitObject || useStore.getState().playback) return;
+    if (e.button !== 0 || viewportApi.pointerHitObject || useStore.getState().playback || useStore.getState().take) return;
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return;
     const additive = e.shiftKey;
     const x0 = e.clientX;
@@ -119,15 +151,15 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Raycasts screen coordinates onto the floor (y = 0). */
-function floorPoint(cx: number, cy: number): [number, number] | null {
+/** Raycasts screen coordinates onto a level plane (the floor by default). */
+function floorPoint(cx: number, cy: number, height = 0): [number, number] | null {
   const cam = viewportApi.camera;
   const canvas = viewportApi.canvas;
   if (!cam || !canvas) return null;
   const r = canvas.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), cam);
-  const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+  const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -height), new THREE.Vector3());
   return hit ? [hit.x, hit.z] : null;
 }
 
@@ -156,6 +188,73 @@ function drawArrow(e: React.PointerEvent) {
     }
     useTransient.getState().setTool(null);
     useStore.getState().addArrow(start, to);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/** Path tool: the stroke on the floor becomes the object's (or camera's) motion through the shot. */
+function drawPath(e: React.PointerEvent) {
+  const first = floorPoint(e.clientX, e.clientY);
+  const transient = useTransient.getState();
+  const target = transient.pathTarget;
+  if (!first || !target) return;
+  const points: [number, number][] = [first];
+  transient.setPathDraft(points.slice());
+  const move = (ev: PointerEvent) => {
+    const p = floorPoint(ev.clientX, ev.clientY);
+    if (!p) return;
+    const last = points[points.length - 1];
+    if (Math.hypot(p[0] - last[0], p[1] - last[1]) < 0.03) return;
+    points.push(p);
+    transient.setPathDraft(points.slice());
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    useTransient.getState().setTool(null);
+    useStore.getState().applyPath(target, points);
+    if (target !== 'camera') useStore.getState().select([target]);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/**
+ * A take: pressing starts the shot; while the button is held, the object
+ * follows the pointer across the floor and is recorded. Letting go (or the
+ * shot ending) keeps the take.
+ */
+function performTake(e: React.PointerEvent) {
+  const store = useStore.getState();
+  const take = store.take;
+  if (!take || take.running) return;
+  const grab = floorPoint(e.clientX, e.clientY, take.start.position[1]);
+  if (!grab) return;
+  const x0 = take.start.position[0];
+  const z0 = take.start.position[2];
+  let heading: number | null = null;
+  let last: [number, number] = [x0, z0];
+  const transient = useTransient.getState();
+  transient.setTakePos({ x: x0, z: z0, heading });
+  store.runTake();
+  const move = (ev: PointerEvent) => {
+    const p = floorPoint(ev.clientX, ev.clientY, take.start.position[1]);
+    if (!p) return;
+    const x = x0 + p[0] - grab[0];
+    const z = z0 + p[1] - grab[1];
+    // Face the way the object travels, once it has gone a few centimetres.
+    if (Math.hypot(x - last[0], z - last[1]) > 0.04) {
+      heading = Math.atan2(x - last[0], z - last[1]);
+      last = [x, z];
+    }
+    transient.setTakePos({ x, z, heading });
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    useStore.getState().finishTake();
+    useTransient.getState().setTakePos(null);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);

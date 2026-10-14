@@ -9,6 +9,7 @@ import { moveLabel } from '../model/cameraMoves';
 import { GUIDE_LABELS, useSettings, type Guides } from '../store/settings';
 import { useTransient, viewportApi, type CameraChip } from '../viewport/shared';
 import { cameraFrameRect } from './layout';
+import type { ShotPhase } from '../model/types';
 import { CameraPicker, FramingTools, MoveTools, ShotLens } from './CameraTools';
 import { Icon } from './icons';
 
@@ -23,6 +24,13 @@ export function useWindowSize() {
 }
 
 type Rect = { x: number; y: number; width: number; height: number };
+
+/** "Start", "End", or the time of a middle key ("1.4 s"). */
+export function phaseLabel(phase: ShotPhase, duration: number): string {
+  if (phase === 'start') return 'Start';
+  if (phase === 'end') return 'End';
+  return `${(phase * duration).toFixed(1)} s`;
+}
 
 /** In Camera view: the frame, darkened surroundings, guides, and the camera chips. */
 export function CameraOverlay() {
@@ -47,7 +55,7 @@ export function CameraOverlay() {
         <>
           <FrameGuides rect={r} />
           <div
-            className={`frame-border${phase === 'end' ? ' end' : ''}`}
+            className={`frame-border${phase === 'end' ? ' end' : typeof phase === 'number' ? ' mid' : ''}`}
             style={{ left: r.x, top: r.y, width: r.width, height: r.height }}
           />
           <FrameInfo x={r.x} y={r.y} />
@@ -65,10 +73,11 @@ function FrameInfo({ x, y }: { x: number; y: number }) {
   });
   const focal = useStore((s) => Math.round(resolveCamera(s.project, currentFrame(s).shotIndex, currentFrame(s).t).focalLength));
   const phase = useStore((s) => s.phase);
+  const duration = useStore((s) => s.project.shots[s.shotIndex].duration);
   const crosses = useStore((s) => crossesAxis(s.project, s.shotIndex));
   return (
     <div className="frame-info" style={{ left: x + 10, top: y + 8 }}>
-      {name} · {focal} mm · <b className={phase === 'end' ? 'end' : ''}>{phase === 'start' ? 'Start' : 'End'}</b>
+      {name} · {focal} mm · <b className={phase === 'end' ? 'end' : typeof phase === 'number' ? 'mid' : ''}>{phaseLabel(phase, duration)}</b>
       {crosses && (
         <span className="axis-warning" title="The camera jumped to the other side of the two people since the last shot, so they swap sides on screen.">
           <Icon.warning /> Crosses the 180° line

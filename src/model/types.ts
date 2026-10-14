@@ -27,7 +27,7 @@ export interface Project {
   shots: Shot[];
   /** Objects that select and move together (Ctrl+G). */
   groups?: Group[];
-  audio?: { file: string; offset: number; beats?: number[] };
+  audio?: Soundtrack;
 }
 
 export interface SceneObject {
@@ -43,6 +43,20 @@ export interface SceneObject {
   text?: string;
   /** State used before the first shot that has a track for this object. */
   base: ObjectState;
+}
+
+/** One music or dialogue track under the film. */
+export interface Soundtrack {
+  /** Original file name, shown to the user. */
+  file: string;
+  /** Film time (seconds) at which the track starts; negative skips its beginning. */
+  offset: number;
+  /** Beat times in seconds from the track start. */
+  beats?: number[];
+  /** The audio itself as a data URL, so a project file is complete on its own. */
+  data?: string;
+  /** Track length in seconds. */
+  duration?: number;
 }
 
 export interface Group {
@@ -103,8 +117,11 @@ export interface Shot {
   paths?: Record<string, Vec3[]>;
 }
 
-/** Which end of a shot the user is editing. */
-export type ShotPhase = 'start' | 'end';
+/**
+ * Where in a shot the user is editing: its start, its end, or a time in
+ * between (0..1, set from the detailed timeline), which writes a middle key.
+ */
+export type ShotPhase = 'start' | 'end' | number;
 
 /** Object state after evaluation, including an in-between pose blend. */
 export interface ResolvedObjectState extends ObjectState {
