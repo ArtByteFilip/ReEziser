@@ -15,6 +15,9 @@ import {
   resolveFrame,
 } from '../model/scene';
 import { evaluateCameraTrack } from '../model/interpolate';
+import { cameraStateFor } from '../model/cameras';
+import { axisLine } from '../model/axis';
+import { useSettings } from '../store/settings';
 import type { Vec3 } from '../model/types';
 import { ObjectNode } from './ObjectNode';
 import { CameraGizmo, cameraQuaternion } from './CameraGizmo';
@@ -23,6 +26,7 @@ import { ACCENT, heldKeys, kindHeight, kindRadius, useTransient, viewportApi } f
 import { cameraFrameRect } from '../ui/layout';
 import { CameraViewControls } from './CameraViewControls';
 import { ThumbnailRenderer } from './ThumbnailRenderer';
+import { StillRenderer } from './StillRenderer';
 
 export function Viewport() {
   return (
@@ -40,6 +44,7 @@ export function Viewport() {
       <SceneContent />
       <Cameras />
       <PlaybackClock />
+      <StillRenderer />
       <ThumbnailRenderer />
     </Canvas>
   );
@@ -53,7 +58,9 @@ function SceneContent() {
   const playing = useStore((s) => !!s.playback);
   const viewMode = useStore((s) => s.viewMode);
   const selection = useStore((s) => s.selection);
-  const cameraSelected = useStore((s) => s.cameraSelected);
+  const selectedCameraId = useStore((s) => s.selectedCameraId);
+  const showAxis = useSettings((s) => s.guides.axis);
+  const arrowDraft = useTransient((s) => s.arrowDraft);
   const hoverId = useTransient((s) => s.hoverId);
   const setHover = useTransient((s) => s.setHover);
   const guides = useTransient((s) => s.guides);
@@ -88,7 +95,23 @@ function SceneContent() {
     return { ghost: resolveCamera(project, shotIndex, phase === 'start' ? 1 : 0), path };
   }, [project, shot, shotIndex, phase, playing]);
 
-  const camState = resolveCamera(project, shotIndex, t);
+  const axis = useMemo(() => {
+    if (!showAxis) return null;
+    const line = axisLine(project, shotIndex, t);
+    if (!line) return null;
+    // Extend the line well past both people.
+    const [a, b] = line;
+    const dx = b[0] - a[0];
+    const dz = b[2] - a[2];
+    const len = Math.hypot(dx, dz) || 1;
+    const ext = 8 / len;
+    return [
+      [a[0] - dx * ext, 0.02, a[2] - dz * ext],
+      [b[0] + dx * ext, 0.02, b[2] + dz * ext],
+    ] as Vec3[];
+  }, [showAxis, project, shotIndex, t]);
+
+  const editing = !playing;
 
   return (
     <>
@@ -100,6 +123,7 @@ function SceneContent() {
           ghost={!playing && !states[obj.id].visible}
           selected={selected.has(obj.id)}
           hovered={hoverId === obj.id && !playing}
+          showPin={viewMode === 'director' && editing}
           onPointerDown={onPointerDown}
           onDoubleClick={onDoubleClick}
           onHover={setHover}
@@ -107,7 +131,7 @@ function SceneContent() {
       ))}
       {motion.map(({ obj, ghost, path }) => (
         <group key={obj.id}>
-          <ObjectNode obj={obj} state={ghost} ghost />
+          <ObjectNode obj={obj} state={ghost} ghost showPin={viewMode === 'director'} />
           <Line points={path} color={ACCENT} lineWidth={1.5} dashed dashSize={0.12} gapSize={0.08} transparent opacity={0.8} />
         </group>
       ))}
@@ -137,12 +161,34 @@ function SceneContent() {
           opacity={0.7}
         />
       ))}
-      {viewMode === 'director' && !playing && (
+      {arrowDraft && (
+        <Line
+          points={[
+            [arrowDraft[0], 0.03, arrowDraft[1]],
+            [arrowDraft[2], 0.03, arrowDraft[3]],
+          ]}
+          color={ACCENT}
+          lineWidth={3}
+        />
+      )}
+      {axis && (
+        <Line points={axis} color="#e5675f" lineWidth={1.5} dashed dashSize={0.3} gapSize={0.15} transparent opacity={0.85} />
+      )}
+      {viewMode === 'director' && editing && (
         <>
-          <CameraGizmo state={camState} aspect={aspect} selected={cameraSelected} interactive />
+          {project.cameras.map((c) => (
+            <CameraGizmo
+              key={c.id}
+              cameraId={c.id}
+              state={cameraStateFor(project, shotIndex, t, c.id)}
+              aspect={aspect}
+              active={c.id === shot.cameraId}
+              selected={selectedCameraId === c.id}
+            />
+          ))}
           {cameraMotion && (
             <>
-              <CameraGizmo state={cameraMotion.ghost} aspect={aspect} ghost />
+              <CameraGizmo state={cameraMotion.ghost} aspect={aspect} active ghost />
               <Line points={cameraMotion.path} color="#d8dbe0" lineWidth={1} dashed dashSize={0.12} gapSize={0.08} />
             </>
           )}
@@ -165,6 +211,7 @@ function Cameras() {
 
   const director = useMemo(() => {
     const cam = new THREE.PerspectiveCamera(40, 1, 0.05, 500);
+    cam.name = 'director';
     cam.position.set(9, 7, 11);
     cam.lookAt(0, 0.5, 0);
     (cam as unknown as { manual: boolean }).manual = true;
@@ -172,6 +219,7 @@ function Cameras() {
   }, []);
   const shotCam = useMemo(() => {
     const cam = new THREE.PerspectiveCamera(40, 1, 0.05, 500);
+    cam.name = 'shot';
     (cam as unknown as { manual: boolean }).manual = true;
     return cam;
   }, []);

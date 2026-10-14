@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useStore, currentFrame } from '../store/store';
 import { resolveFrame, shotStartTime, totalDuration } from '../model/scene';
-import { kindHeight, viewportApi } from '../viewport/shared';
+import { kindHeight, useTransient, viewportApi } from '../viewport/shared';
 import { Icon } from './icons';
 
 /** While playing: a thin progress bar and a stop button; everything else hides. */
@@ -63,8 +63,13 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
   const rectRef = useRef(rect);
   rectRef.current = rect;
 
-  const onPointerDownCapture = () => {
+  const onPointerDownCapture = (e: React.PointerEvent) => {
     viewportApi.pointerHitObject = false;
+    if (useTransient.getState().tool === 'arrow' && e.button === 0) {
+      // Drawing wins over picking: keep the event away from objects and orbiting.
+      e.stopPropagation();
+      drawArrow(e);
+    }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -114,6 +119,48 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Raycasts screen coordinates onto the floor (y = 0). */
+function floorPoint(cx: number, cy: number): [number, number] | null {
+  const cam = viewportApi.camera;
+  const canvas = viewportApi.canvas;
+  if (!cam || !canvas) return null;
+  const r = canvas.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), cam);
+  const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+  return hit ? [hit.x, hit.z] : null;
+}
+
+/** Arrow tool: press, drag along the floor, release. A click alone draws a short arrow away from the camera. */
+function drawArrow(e: React.PointerEvent) {
+  const start = floorPoint(e.clientX, e.clientY);
+  const transient = useTransient.getState();
+  if (!start) return;
+  let end = start;
+  const move = (ev: PointerEvent) => {
+    const p = floorPoint(ev.clientX, ev.clientY);
+    if (!p) return;
+    end = p;
+    transient.setArrowDraft([start[0], start[1], end[0], end[1]]);
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    let to = end;
+    if (Math.hypot(to[0] - start[0], to[1] - start[1]) < 0.3) {
+      const cam = viewportApi.camera!;
+      const dir = new THREE.Vector3();
+      cam.getWorldDirection(dir);
+      const len = Math.hypot(dir.x, dir.z) || 1;
+      to = [start[0] + (dir.x / len) * 2, start[1] + (dir.z / len) * 2];
+    }
+    useTransient.getState().setTool(null);
+    useStore.getState().addArrow(start, to);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
 function objectsInRect(x0: number, y0: number, x1: number, y1: number): string[] {
   const cam = viewportApi.camera;
   const canvas = viewportApi.canvas;
@@ -127,6 +174,7 @@ function objectsInRect(x0: number, y0: number, x1: number, y1: number): string[]
   const p = new THREE.Vector3();
   return s.project.objects
     .filter((o) => {
+      if (o.kind === 'label' && s.viewMode !== 'director') return false;
       const st = states[o.id];
       p.set(st.position[0], st.position[1] + (kindHeight(o) * st.scale[1]) / 2, st.position[2]).project(cam);
       if (p.z > 1) return false;

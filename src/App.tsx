@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { Viewport } from './viewport/Viewport';
 import { useStore } from './store/store';
 import { heldKeys, viewportApi } from './viewport/shared';
-import { readAutosave, writeAutosave } from './io/files';
+import { readAutosave, rememberPath, writeAutosave } from './io/files';
+import { desktop } from './io/desktop';
+import { parseProject } from './model/projectFile';
 import { TopBar } from './ui/TopBar';
 import { AddPalette } from './ui/AddPalette';
 import { ContextPanel } from './ui/ContextPanel';
@@ -10,17 +12,21 @@ import { ShotStrip } from './ui/ShotStrip';
 import { CameraOverlay } from './ui/CameraOverlay';
 import { SceneLabels } from './ui/SceneLabels';
 import { HintToast, MarqueeLayer, PlaybackOverlay } from './ui/Overlays';
+import { RadialMenu } from './ui/RadialMenu';
+import { useTransient } from './viewport/shared';
 import { openProjectFlow, saveProjectFlow } from './ui/fileActions';
 
 const AUTOSAVE_MS = 30_000;
 
 export function App() {
   const playing = useStore((s) => !!s.playback);
+  const cameraView = useStore((s) => s.viewMode === 'camera');
   useShortcuts();
   useAutosave();
+  useWindowTitle();
 
   return (
-    <div className={`app${playing ? ' playing' : ''}`}>
+    <div className={`app${playing ? ' playing' : ''}${cameraView ? ' camera-view' : ''}`}>
       <MarqueeLayer>
         <Viewport />
       </MarqueeLayer>
@@ -32,6 +38,7 @@ export function App() {
           <AddPalette />
           <ContextPanel />
           <ShotStrip />
+          <RadialMenu />
         </>
       )}
       <PlaybackOverlay />
@@ -71,7 +78,10 @@ function useShortcuts() {
         else if ((key === 'z' && e.shiftKey) || key === 'y') s.redo();
         else if (key === 's') saveProjectFlow(e.shiftKey);
         else if (key === 'o') openProjectFlow();
+        else if (key === 'e') useTransient.getState().setExportOpen(true);
         else if (key === 'd') s.duplicateSelection();
+        else if (key === 'g' && e.shiftKey) s.ungroupSelection();
+        else if (key === 'g') s.groupSelection();
         else return;
         e.preventDefault();
         return;
@@ -86,7 +96,9 @@ function useShortcuts() {
       switch (key) {
         case 'delete':
         case 'backspace':
-          s.deleteSelection();
+          if (s.selectedCameraId && s.viewMode === 'director' && s.project.cameras.length > 1) {
+            s.deleteCamera(s.selectedCameraId);
+          } else s.deleteSelection();
           break;
         case 'tab':
           s.setViewMode(s.viewMode === 'director' ? 'camera' : 'director');
@@ -107,7 +119,8 @@ function useShortcuts() {
           viewportApi.resetView();
           break;
         case 'escape':
-          s.clearSelection();
+          if (useTransient.getState().tool) useTransient.getState().setTool(null);
+          else s.clearSelection();
           break;
         case ' ':
           break;
@@ -149,23 +162,54 @@ function useShortcuts() {
 
 function useAutosave() {
   useEffect(() => {
-    const restored = readAutosave();
-    if (restored) useStore.getState().loadProject(restored);
-
+    let disposed = false;
     let saved = useStore.getState().project;
-    const save = () => {
+    const save = async () => {
       const { project } = useStore.getState();
       if (project === saved) return;
-      writeAutosave(project);
       saved = project;
+      await writeAutosave(project);
     };
+
+    // A project opened by double-click wins over the autosave.
+    (async () => {
+      const launched = await desktop?.launchFile().catch(() => null);
+      let project = null;
+      if (launched) {
+        try {
+          project = parseProject(launched.text);
+          rememberPath(launched.path);
+        } catch (e) {
+          useStore.getState().notify(e instanceof Error ? e.message : 'Could not open that file.');
+        }
+      }
+      project ??= await readAutosave();
+      if (project && !disposed) {
+        useStore.getState().loadProject(project);
+        saved = project;
+      }
+    })();
+
     const timer = setInterval(save, AUTOSAVE_MS);
-    window.addEventListener('pagehide', save);
-    window.addEventListener('beforeunload', save);
+    const onHide = () => void save();
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('beforeunload', onHide);
+    const unlisten = desktop?.onClose(save);
     return () => {
+      disposed = true;
       clearInterval(timer);
-      window.removeEventListener('pagehide', save);
-      window.removeEventListener('beforeunload', save);
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('beforeunload', onHide);
+      unlisten?.then((f) => f());
     };
   }, []);
+}
+
+/** In the desktop app, the window title follows the scene name. */
+function useWindowTitle() {
+  const name = useStore((s) => s.project.name);
+  useEffect(() => {
+    document.title = `${name} — ReEziser`;
+    desktop?.setTitle(`${name} — ReEziser`).catch(() => {});
+  }, [name]);
 }

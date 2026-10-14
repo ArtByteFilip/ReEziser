@@ -3,36 +3,31 @@ import * as THREE from 'three';
 import { useStore, currentFrame } from '../store/store';
 import { PALETTE } from '../model/defaults';
 import { POSE_LABELS, POSE_ORDER } from '../model/poses';
-import { LENSES } from '../model/lens';
-import {
-  cameraHasMotion,
-  cameraStateAt,
-  clearCameraMotion,
-  clearObjectMotion,
-  hasMotion,
-  objectStateAt,
-  resolveFrame,
-} from '../model/scene';
+import { clearObjectMotion, hasMotion, objectStateAt, resolveFrame } from '../model/scene';
+import { cameraStateFor } from '../model/cameras';
+import { selectedGroup, topLevelOf } from '../model/groups';
 import type { ObjectState, SceneObject } from '../model/types';
 import { kindHeight, viewportApi } from '../viewport/shared';
 import { useTransient } from '../viewport/shared';
 import { Icon } from './icons';
+import { CameraPicker, CameraTabs, LookThroughButton, openFraming } from './CameraTools';
 import { STRIP_HEIGHT, TOP_BAR_HEIGHT } from './layout';
 
 /** Floating panel next to the selection: the only place object properties appear. */
 export function ContextPanel() {
   const selection = useStore((s) => s.selection);
-  const cameraSelected = useStore((s) => s.cameraSelected);
+  // Camera view has its own camera chips, so the camera panel only opens in Director view.
+  const cameraId = useStore((s) => (s.viewMode === 'director' ? s.selectedCameraId : null));
   const playing = useStore((s) => !!s.playback);
   const dragging = useTransient((s) => s.dragging);
   const ref = useRef<HTMLDivElement>(null);
 
-  useAnchorToSelection(ref, selection.length > 0 || cameraSelected);
+  useAnchorToSelection(ref, selection.length > 0 || !!cameraId);
 
-  if (playing || (!selection.length && !cameraSelected)) return null;
+  if (playing || (!selection.length && !cameraId)) return null;
   return (
     <div ref={ref} className={`floating context-panel${dragging ? ' faded' : ''}`}>
-      {cameraSelected ? <CameraSection /> : <ObjectSection ids={selection} />}
+      {cameraId ? <CameraSection id={cameraId} /> : <ObjectSection ids={selection} />}
     </div>
   );
 }
@@ -62,8 +57,9 @@ function useAnchorToSelection(ref: React.RefObject<HTMLDivElement | null>, activ
         max[1] = Math.max(max[1], y + h);
         max[2] = Math.max(max[2], z + r);
       };
-      if (s.cameraSelected) {
-        const c = cameraStateAt(s.project, shotIndex, s.phase);
+      if (s.selectedCameraId) {
+        if (!s.project.cameras.some((c) => c.id === s.selectedCameraId)) return;
+        const c = cameraStateFor(s.project, shotIndex, t, s.selectedCameraId);
         grow(c.position[0], c.position[1] - 0.15, c.position[2], 0.2, 0.3);
       } else {
         const objs = s.project.objects.filter((o) => s.selection.includes(o.id));
@@ -131,6 +127,9 @@ function ObjectSection({ ids }: { ids: string[] }) {
   const moving = objs.some((o) => hasMotion(shot, o.id));
   const allLocked = objs.every((o) => o.locked);
   const allHidden = objs.every((o) => !states[o.id].visible);
+  const group = selectedGroup(project, ids);
+  const canGroup = new Set(ids.map((id) => topLevelOf(project, id))).size >= 2;
+  const frameable = objs.find((o) => o.kind !== 'arrow' && o.kind !== 'label');
 
   const updateDefs = (fn: (o: SceneObject) => void) =>
     apply((d) => d.objects.filter((o) => ids.includes(o.id)).forEach(fn));
@@ -143,7 +142,7 @@ function ObjectSection({ ids }: { ids: string[] }) {
 
   return (
     <>
-      <div className="panel-title">{single ? single.name : `${objs.length} selected`}</div>
+      <div className="panel-title">{group ? group.name : single ? single.name : `${objs.length} selected`}</div>
       <div className="swatches">
         {PALETTE.map((c) => (
           <button
@@ -156,7 +155,11 @@ function ObjectSection({ ids }: { ids: string[] }) {
           />
         ))}
       </div>
-      {single && <LabelField obj={single} />}
+      {single?.kind === 'label' ? (
+        <LabelField obj={single} field="text" />
+      ) : (
+        single && single.kind !== 'arrow' && <LabelField obj={single} field="label" />
+      )}
       {figures.length > 0 && (
         <>
           <div className="chips">
@@ -198,6 +201,30 @@ function ObjectSection({ ids }: { ids: string[] }) {
           <Icon.still /> Remove motion
         </button>
       )}
+      {(canGroup || group || frameable) && (
+        <div className="row-btns">
+          {frameable && (
+            <button
+              className="text-btn"
+              title="Frame it with the shot's camera"
+              onClick={() => openFraming(frameable.id)}
+            >
+              <Icon.frame /> Frame
+            </button>
+          )}
+          {group ? (
+            <button className="text-btn" title="Ungroup (Ctrl+Shift+G)" onClick={() => useStore.getState().ungroupSelection()}>
+              <Icon.ungroup /> Ungroup
+            </button>
+          ) : (
+            canGroup && (
+              <button className="text-btn" title="Group (Ctrl+G): move them as one" onClick={() => useStore.getState().groupSelection()}>
+                <Icon.group /> Group
+              </button>
+            )
+          )}
+        </div>
+      )}
       <div className="actions">
         <button title="Duplicate (Ctrl+D)" onClick={() => useStore.getState().duplicateSelection()}>
           <Icon.duplicate />
@@ -231,25 +258,29 @@ function ObjectSection({ ids }: { ids: string[] }) {
   );
 }
 
-function LabelField({ obj }: { obj: SceneObject }) {
+/** Edits an object's floating label, or the text of a free label. */
+function LabelField({ obj, field }: { obj: SceneObject; field: 'label' | 'text' }) {
   const apply = useStore((s) => s.apply);
-  const [draft, setDraft] = useState(obj.label ?? '');
-  useEffect(() => setDraft(obj.label ?? ''), [obj.id, obj.label]);
+  const value = obj[field] ?? '';
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [obj.id, value]);
   const commit = () => {
     const next = draft.trim();
-    if (next !== (obj.label ?? '')) {
+    if (next !== value) {
       apply((d) => {
         const o = d.objects.find((x) => x.id === obj.id);
         if (!o) return;
-        if (next) o.label = next;
-        else delete o.label;
+        if (next) o[field] = next;
+        else delete o[field];
       });
     }
   };
   return (
     <input
       className="text-field"
-      placeholder="Label (e.g. Peter)"
+      autoFocus={field === 'text' && value === 'Label'}
+      onFocus={(e) => e.target.select()}
+      placeholder={field === 'text' ? 'Text' : 'Label (e.g. Peter)'}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -306,45 +337,38 @@ function NumberInput({ value, onCommit }: { value: number; onCommit: (v: number)
   );
 }
 
-function CameraSection() {
-  const project = useStore((s) => s.project);
-  const shotIndex = useStore((s) => s.shotIndex);
-  const phase = useStore((s) => s.phase);
-  const setCamera = useStore((s) => s.setCamera);
-  const apply = useStore((s) => s.apply);
-  const shot = project.shots[shotIndex];
-  const cam = project.cameras.find((c) => c.id === shot.cameraId);
-  const state = cameraStateAt(project, shotIndex, phase);
+function CameraSection({ id }: { id: string }) {
+  const cam = useStore((s) => s.project.cameras.find((c) => c.id === id));
+  const active = useStore((s) => s.project.shots[s.shotIndex].cameraId === id);
+  const several = useStore((s) => s.project.cameras.length > 1);
+  if (!cam) return null;
+  if (!active) {
+    return (
+      <>
+        <div className="panel-title">{cam.name}</div>
+        <div className="tool-note">Not filming this shot.</div>
+        <button className="text-btn strong" onClick={() => useStore.getState().useCamera(id)}>
+          <Icon.camera /> Film this shot with {cam.name}
+        </button>
+        <button className="text-btn" onClick={() => useStore.getState().deleteCamera(id)}>
+          <Icon.trash /> Delete camera
+        </button>
+      </>
+    );
+  }
   return (
     <>
-      <div className="panel-title">{cam?.name ?? 'Camera'}</div>
-      <LensTiles value={state.focalLength} onPick={(f) => setCamera({ ...state, focalLength: f })} />
-      {cameraHasMotion(shot) && (
-        <button className="text-btn" onClick={() => apply((d) => clearCameraMotion(d, shotIndex))}>
-          <Icon.still /> Remove camera motion
-        </button>
-      )}
-      <button className="text-btn" onClick={() => useStore.getState().setViewMode('camera')}>
-        <Icon.camera /> Look through
-      </button>
+      <div className="panel-title">{cam.name}</div>
+      {several && <CameraPicker />}
+      <CameraTabs />
+      <div className="row-btns">
+        <LookThroughButton />
+        {!several && (
+          <button className="text-btn" title="Add a camera at a new angle" onClick={() => useStore.getState().addCamera()}>
+            <Icon.plus size={18} /> Camera
+          </button>
+        )}
+      </div>
     </>
-  );
-}
-
-export function LensTiles({ value, onPick }: { value: number; onPick: (f: number) => void }) {
-  return (
-    <div className="lens-tiles">
-      {LENSES.map((f) => (
-        <button
-          key={f}
-          className={`lens${Math.abs(value - f) < 0.5 ? ' on' : ''}`}
-          title={f <= 24 ? 'Wide lens' : f >= 85 ? 'Long lens' : 'Normal lens'}
-          onClick={() => onPick(f)}
-        >
-          {f}
-          <small>mm</small>
-        </button>
-      ))}
-    </div>
   );
 }

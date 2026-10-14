@@ -2,3 +2,6 @@ node_modules
 dist
 test-results
 playwright-report
+# Built app: the folder is kept, the binaries are not
+BUILD/*
+!BUILD/README.md

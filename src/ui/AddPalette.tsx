@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ObjectKind } from '../model/types';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
+import { useTransient } from '../viewport/shared';
 
 const SHAPES: { kind: ObjectKind; label: string; icon: () => React.ReactNode }[] = [
   { kind: 'figure', label: 'Person', icon: Icon.person },
@@ -11,6 +12,13 @@ const SHAPES: { kind: ObjectKind; label: string; icon: () => React.ReactNode }[]
   { kind: 'cone', label: 'Cone', icon: Icon.cone },
   { kind: 'plane', label: 'Wall', icon: Icon.wall },
   { kind: 'ramp', label: 'Ramp', icon: Icon.ramp },
+];
+
+/** Things that aren't props: storyboard marks and cameras, on their own row. */
+const EXTRAS: { id: 'arrow' | 'label' | 'camera'; label: string; title: string; icon: () => React.ReactNode }[] = [
+  { id: 'arrow', label: 'Arrow', title: 'Draw an arrow on the floor to show movement', icon: Icon.arrow },
+  { id: 'label', label: 'Label', title: 'Text floating in the scene', icon: Icon.label },
+  { id: 'camera', label: 'Camera', title: 'Another camera for this shot', icon: Icon.movieCamera },
 ];
 
 /** The single "add" button and its floating shape palette. */
@@ -58,6 +66,27 @@ export function AddPalette() {
             >
               {s.icon()}
               <span>{s.label}</span>
+            </button>
+          ))}
+          <div className="shapes-sep" />
+          {EXTRAS.map((x) => (
+            <button
+              key={x.id}
+              className="shape-tile"
+              title={x.title}
+              onClick={() => {
+                setOpen(false);
+                const store = useStore.getState();
+                if (x.id === 'arrow') {
+                  store.clearSelection();
+                  useTransient.getState().setTool('arrow');
+                  store.notify('Drag on the floor to draw the arrow. Esc cancels.');
+                } else if (x.id === 'label') addObject('label');
+                else store.addCamera();
+              }}
+            >
+              {x.icon()}
+              <span>{x.label}</span>
             </button>
           ))}
         </div>

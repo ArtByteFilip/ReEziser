@@ -88,7 +88,87 @@ export const Icon = {
       <circle cx="18" cy="12" r="1.2" fill="currentColor" />
     </Svg>
   ),
+  frame: () => (
+    <Svg size={18}>
+      <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
+      <circle cx="12" cy="10" r="2.2" />
+      <path d="M8.5 16.5c.6-2 2-3 3.5-3s2.9 1 3.5 3" />
+    </Svg>
+  ),
+  group: () => (
+    <Svg size={18}>
+      <rect x="3" y="3" width="18" height="18" rx="3" strokeDasharray="3 2.5" />
+      <rect x="7" y="7" width="5" height="5" rx="1" />
+      <rect x="12" y="12" width="5" height="5" rx="1" />
+    </Svg>
+  ),
+  ungroup: () => (
+    <Svg size={18}>
+      <rect x="3" y="3" width="8" height="8" rx="1.5" />
+      <rect x="13" y="13" width="8" height="8" rx="1.5" />
+    </Svg>
+  ),
+  guides: () => (
+    <Svg size={18}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M9 5v14M15 5v14M3 9.7h18M3 14.3h18" strokeWidth={1.1} />
+    </Svg>
+  ),
+  warning: () => (
+    <Svg size={14}>
+      <path d="M12 4l9 16H3z" />
+      <path d="M12 10v4M12 17.2v.3" />
+    </Svg>
+  ),
+  share: () => (
+    <Svg size={18}>
+      <path d="M12 15V4M8 8l4-4 4 4" />
+      <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    </Svg>
+  ),
+  close: () => (
+    <Svg size={18}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  ),
+  storyboard: () => (
+    <Svg>
+      <rect x="3" y="4" width="8" height="6" rx="1" />
+      <rect x="13" y="4" width="8" height="6" rx="1" />
+      <rect x="3" y="14" width="8" height="6" rx="1" />
+      <rect x="13" y="14" width="8" height="6" rx="1" />
+    </Svg>
+  ),
+  list: () => (
+    <Svg>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="0.9" fill="currentColor" />
+      <circle cx="4.5" cy="12" r="0.9" fill="currentColor" />
+      <circle cx="4.5" cy="18" r="0.9" fill="currentColor" />
+    </Svg>
+  ),
   // Shape palette
+  arrow: () => (
+    <Svg size={28}>
+      <path d="M4 18c4-1 9-4 13-10" />
+      <path d="M12.5 7.5L17 8l.5 4.5" />
+    </Svg>
+  ),
+  label: () => (
+    <Svg size={28}>
+      <rect x="4" y="5" width="16" height="7" rx="3.5" />
+      <path d="M12 12v8" />
+      <circle cx="12" cy="20" r="0.8" fill="currentColor" />
+    </Svg>
+  ),
+  movieCamera: () => (
+    <Svg size={28}>
+      <rect x="3" y="9" width="12" height="9" rx="2" />
+      <path d="M15 12l5-2.5v8L15 15z" />
+      <circle cx="6.5" cy="5.5" r="2.5" />
+      <circle cx="12" cy="5.5" r="2.5" />
+    </Svg>
+  ),
   person: () => (
     <Svg size={28}>
       <circle cx="12" cy="5" r="2.5" />

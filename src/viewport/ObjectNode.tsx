@@ -5,6 +5,7 @@ import type { ResolvedObjectState, SceneObject } from '../model/types';
 import { jointsFor } from '../model/poses';
 import { Figure } from './Figure';
 import { ACCENT, CHILD_SCALE } from './shared';
+import { LABEL_HEIGHT } from '../model/dimensions';
 
 const geometries = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
@@ -29,12 +30,54 @@ function rampGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+/**
+ * A flat arrow on the floor pointing along +Z, centred on the origin. The head
+ * keeps its size whatever the length, like a hand-drawn storyboard arrow.
+ */
+function arrowGeometry(length: number): THREE.BufferGeometry {
+  const half = length / 2;
+  const head = Math.min(0.45, length * 0.4);
+  const shaft = 0.09;
+  const wing = 0.27;
+  // Shape space: x is sideways, y is -Z after the rotation below.
+  const shape = new THREE.Shape();
+  shape.moveTo(-shaft, half);
+  shape.lineTo(shaft, half);
+  shape.lineTo(shaft, -half + head);
+  shape.lineTo(wing, -half + head);
+  shape.lineTo(0, -half);
+  shape.lineTo(-wing, -half + head);
+  shape.lineTo(-shaft, -half + head);
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0.012, 0);
+  return g;
+}
+
+const arrowCache = new Map<number, THREE.BufferGeometry>();
+function arrowFor(length: number): THREE.BufferGeometry {
+  const key = Math.round(length * 20) / 20;
+  let g = arrowCache.get(key);
+  if (!g) {
+    g = arrowGeometry(Math.max(0.3, key));
+    arrowCache.set(key, g);
+  }
+  return g;
+}
+
+const pinStem = new THREE.CylinderGeometry(0.012, 0.012, LABEL_HEIGHT - 0.12, 6).translate(0, (LABEL_HEIGHT - 0.12) / 2, 0);
+const pinFoot = new THREE.SphereGeometry(0.05, 12, 8);
+const pinHit = new THREE.CylinderGeometry(0.15, 0.15, LABEL_HEIGHT, 8).translate(0, LABEL_HEIGHT / 2, 0);
+
 interface Props {
   obj: SceneObject;
   state: ResolvedObjectState;
   selected?: boolean;
   hovered?: boolean;
   ghost?: boolean;
+  /** Draw the stem of free labels (only while editing in Director view). */
+  showPin?: boolean;
   onPointerDown?: (e: ThreeEvent<PointerEvent>, id: string) => void;
   onDoubleClick?: (e: ThreeEvent<MouseEvent>, id: string) => void;
   onHover?: (id: string | null) => void;
@@ -48,6 +91,7 @@ export const ObjectNode = memo(function ObjectNode({
   selected,
   hovered,
   ghost,
+  showPin,
   onPointerDown,
   onDoubleClick,
   onHover,
@@ -70,6 +114,7 @@ export const ObjectNode = memo(function ObjectNode({
   }, [material, obj.color, selected, hovered]);
 
   if (!state.visible && !ghost) return null;
+  if (obj.kind === 'label' && !showPin) return null;
 
   const rotXZ = state.rotationXZ ?? [0, 0];
   const isFigure = obj.kind === 'figure';
@@ -92,9 +137,23 @@ export const ObjectNode = memo(function ObjectNode({
       onPointerOut={onHover ? () => onHover(null) : undefined}
       userData={{ objectId: obj.id }}
     >
-      <group scale={[state.scale[0] * sizeScale, state.scale[1] * sizeScale, state.scale[2] * sizeScale]}>
+      <group
+        scale={
+          obj.kind === 'arrow'
+            ? [state.scale[0], 1, 1]
+            : [state.scale[0] * sizeScale, state.scale[1] * sizeScale, state.scale[2] * sizeScale]
+        }
+      >
         {isFigure ? (
           <Figure joints={jointsFor(state)} material={material} />
+        ) : obj.kind === 'arrow' ? (
+          <mesh geometry={arrowFor(state.scale[2])} material={material} receiveShadow />
+        ) : obj.kind === 'label' ? (
+          <>
+            <mesh geometry={pinStem} material={material} />
+            <mesh geometry={pinFoot} material={material} />
+            <mesh geometry={pinHit} visible={false} />
+          </>
         ) : (
           <mesh
             geometry={geometries[obj.kind as keyof typeof geometries] ?? geometries.box}
@@ -114,6 +173,7 @@ function propsEqual(a: Props, b: Props): boolean {
     a.selected === b.selected &&
     a.hovered === b.hovered &&
     a.ghost === b.ghost &&
+    a.showPin === b.showPin &&
     a.onPointerDown === b.onPointerDown &&
     statesEqual(a.state, b.state)
   );

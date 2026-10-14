@@ -40,7 +40,8 @@ export function defaultObjectState(kind: ObjectKind, position: [number, number, 
   return {
     position,
     rotationY: 0,
-    scale: [1, 1, 1],
+    // Arrows are 2 m long; their length is the depth scale.
+    scale: kind === 'arrow' ? [1, 1, 2] : [1, 1, 1],
     visible: true,
     ...(kind === 'figure' ? { pose: 'stand' as const } : {}),
   };
@@ -62,8 +63,9 @@ export function createObject(kind: ObjectKind, existing: SceneObject[], position
     id: newId(),
     kind,
     name: `${label} ${count}`,
-    color: kind === 'figure' ? PALETTE[1] : PALETTE[0],
+    color: kind === 'figure' ? PALETTE[1] : kind === 'arrow' ? PALETTE[2] : kind === 'label' ? PALETTE[3] : PALETTE[0],
     ...(kind === 'figure' ? { figureSize: 'adult' as const } : {}),
+    ...(kind === 'label' ? { text: 'Label' } : {}),
     base: defaultObjectState(kind, position),
   };
 }

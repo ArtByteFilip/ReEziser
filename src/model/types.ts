@@ -25,6 +25,8 @@ export interface Project {
   objects: SceneObject[];
   cameras: CameraDef[];
   shots: Shot[];
+  /** Objects that select and move together (Ctrl+G). */
+  groups?: Group[];
   audio?: { file: string; offset: number; beats?: number[] };
 }
 
@@ -41,6 +43,13 @@ export interface SceneObject {
   text?: string;
   /** State used before the first shot that has a track for this object. */
   base: ObjectState;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  /** Object ids and nested group ids. */
+  children: string[];
 }
 
 export interface Transform {
@@ -83,7 +92,11 @@ export interface Shot {
   note: string;
   duration: number;
   cameraId: string;
+  /** One-click framing the user picked ('close-up', …); a label, kept until another is picked. */
   shotType?: string;
+  /** Angle picked with the shot type ('low', …). */
+  cameraAngle?: string;
+  /** Camera move preset ('dolly-in', …). */
   cameraMove?: string;
   objectTracks: Record<string, Key<ObjectState>[]>;
   cameraTrack: Key<CameraState>[];

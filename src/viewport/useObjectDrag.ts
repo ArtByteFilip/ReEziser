@@ -3,12 +3,18 @@ import * as THREE from 'three';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import type { ObjectState } from '../model/types';
 import { objectStateAt } from '../model/scene';
+import { floorCentre, scaleAround, turnAround } from '../model/groups';
+import { AxisLock } from '../model/axisLock';
 import { useStore } from '../store/store';
-import { heldKeys, useTransient, viewportApi } from './shared';
+import { armRadial, heldKeys, useTransient, viewportApi } from './shared';
 
 const GRID = 0.25;
 const GUIDE_SNAP = 0.12;
 const DRAG_THRESHOLD_PX = 3;
+/** How far (metres) a Ctrl-drag goes before its axis is chosen. */
+const LOCK_THRESHOLD = 0.08;
+/** Half-length of the line drawn along a locked axis. */
+const LOCK_GUIDE = 30;
 
 type Mode = 'move' | 'lift' | 'rotate' | 'scale';
 
@@ -17,7 +23,8 @@ const snap = (v: number, step: number) => Math.round(v / step) * step;
 /**
  * Gizmo-free object manipulation. Plain drag moves along the floor,
  * Alt+drag lifts, R+drag rotates, S+drag scales. Shift while dragging
- * turns snapping off; Shift+click toggles selection.
+ * turns snapping off; Ctrl while dragging keeps the move on the axis it
+ * started along; Shift+click toggles selection.
  */
 export function useObjectDrag() {
   const camera = useThree((s) => s.camera);
@@ -26,11 +33,16 @@ export function useObjectDrag() {
   const onPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>, id: string) => {
       viewportApi.pointerHitObject = true;
+      const store = useStore.getState();
+      if (store.playback) return;
+      if (e.button === 2) {
+        // Don't stop propagation: a right drag still orbits (or looks around in Camera view).
+        armRadial(e.nativeEvent, { kind: 'object', id });
+        return;
+      }
       if (e.button !== 0 || heldKeys.has(' ')) return;
       e.stopPropagation();
 
-      const store = useStore.getState();
-      if (store.playback) return;
       const additive = e.shiftKey;
       if (additive) {
         store.select([id], true);
@@ -54,6 +66,8 @@ export function useObjectDrag() {
         starts[sid] = objectStateAt(project, shotIndex, phase, obj);
       }
       const primary = ids.includes(id) ? id : ids[0];
+      // Several objects turn and scale as one, around their common centre.
+      const centre = floorCentre(ids.map((sid) => starts[sid]));
       const others = project.objects
         .filter((o) => !ids.includes(o.id))
         .map((o) => objectStateAt(project, shotIndex, phase, o).position);
@@ -75,6 +89,7 @@ export function useObjectDrag() {
       const fov = (camera as THREE.PerspectiveCamera).fov ?? 50;
       const unitsPerPx = (2 * dist * Math.tan((fov * Math.PI) / 360)) / rect.height;
       let started = false;
+      const lock = new AxisLock(LOCK_THRESHOLD);
 
       const move = (ev: PointerEvent) => {
         const dx = ev.clientX - startX;
@@ -84,6 +99,7 @@ export function useObjectDrag() {
           started = true;
           useStore.getState().beginGesture();
           useTransient.getState().setDragging(true);
+          if (mode === 'move') useStore.getState().showHint('axis-lock', 'Hold Ctrl while dragging to move along one line only.');
         }
         const free = ev.shiftKey;
         const next: Record<string, ObjectState> = {};
@@ -92,18 +108,22 @@ export function useObjectDrag() {
         if (mode === 'move') {
           const p = hitOnPlane(ev.clientX, ev.clientY);
           if (!p) return;
-          let ddx = p.x - grab.x;
-          let ddz = p.z - grab.z;
+          let [ddx, ddz] = lock.apply([p.x - grab.x, p.z - grab.z], ev.ctrlKey);
           const s0 = starts[primary].position;
           let px = s0[0] + ddx;
           let pz = s0[2] + ddz;
+          // A locked axis keeps the other coordinate exactly where it started.
+          const lockedX = lock.axis === 0;
+          const lockedZ = lock.axis === 1;
           if (!free) {
-            px = snap(px, GRID);
-            pz = snap(pz, GRID);
+            if (!lockedZ) px = snap(px, GRID);
+            if (!lockedX) pz = snap(pz, GRID);
           }
-          // Smart guides: line up with other objects on X or Z.
-          const alignX = others.find((o) => Math.abs(o[0] - (s0[0] + ddx)) < GUIDE_SNAP);
-          const alignZ = others.find((o) => Math.abs(o[2] - (s0[2] + ddz)) < GUIDE_SNAP);
+          if (lockedX) guides.push([s0[0] - LOCK_GUIDE, s0[2], s0[0] + LOCK_GUIDE, s0[2]]);
+          if (lockedZ) guides.push([s0[0], s0[2] - LOCK_GUIDE, s0[0], s0[2] + LOCK_GUIDE]);
+          // Smart guides: line up with other objects on X or Z (only along the free direction).
+          const alignX = lockedZ ? undefined : others.find((o) => Math.abs(o[0] - (s0[0] + ddx)) < GUIDE_SNAP);
+          const alignZ = lockedX ? undefined : others.find((o) => Math.abs(o[2] - (s0[2] + ddz)) < GUIDE_SNAP);
           if (alignX) {
             px = alignX[0];
             guides.push([px, Math.min(alignX[2], pz) - 1, px, Math.max(alignX[2], pz) + 1]);
@@ -128,13 +148,14 @@ export function useObjectDrag() {
         } else if (mode === 'rotate') {
           let delta = dx * 0.012;
           if (!free) delta = snap(delta, Math.PI / 12);
-          for (const sid of ids) next[sid] = { ...starts[sid], rotationY: starts[sid].rotationY + delta };
+          for (const sid of ids) next[sid] = turnAround(starts[sid], centre, delta);
         } else {
           let f = Math.exp((dx - dy) * 0.005);
           if (!free) f = Math.max(0.05, snap(f, 0.05));
           for (const sid of ids) {
             const s = starts[sid];
-            next[sid] = { ...s, scale: [s.scale[0] * f, s.scale[1] * f, s.scale[2] * f] };
+            next[sid] =
+              ids.length > 1 ? scaleAround(s, centre, f) : { ...s, scale: [s.scale[0] * f, s.scale[1] * f, s.scale[2] * f] };
           }
         }
         useTransient.getState().setGuides(guides);

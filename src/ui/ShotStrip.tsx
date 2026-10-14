@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { aspectValue } from '../model/lens';
 import { deleteShot, duplicateShot, moveShot } from '../model/scene';
+import { crossesAxis } from '../model/axis';
+import { shotTypeInfo } from '../model/framing';
+import { moveLabel } from '../model/cameraMoves';
 import type { Shot } from '../model/types';
 import { Icon } from './icons';
 
@@ -10,7 +13,10 @@ const MIN_DURATION = 0.5;
 
 /** The row of shots at the bottom, plus the Start | End switch for the selected one. */
 export function ShotStrip() {
-  const shots = useStore((s) => s.project.shots);
+  const project = useStore((s) => s.project);
+  const shots = project.shots;
+  // Cuts that jump across the 180° line, computed once per change.
+  const crossings = useMemo(() => project.shots.map((_, i) => crossesAxis(project, i)), [project]);
   const aspect = useStore((s) => aspectValue(s.project.aspectRatio));
   const shotIndex = useStore((s) => s.shotIndex);
   const phase = useStore((s) => s.phase);
@@ -40,6 +46,7 @@ export function ShotStrip() {
             index={i}
             width={cardWidth}
             selected={i === shotIndex}
+            crosses={crossings[i]}
             dropBefore={reorder !== null && reorder.to === i && reorder.from !== i && reorder.from !== i - 1}
             dropAfter={reorder !== null && i === shots.length - 1 && reorder.to === shots.length && reorder.from !== i}
             onMenu={(x, y) => setMenu({ index: i, x, y })}
@@ -61,6 +68,7 @@ interface CardProps {
   index: number;
   width: number;
   selected: boolean;
+  crosses: boolean;
   dropBefore: boolean;
   dropAfter: boolean;
   onMenu: (x: number, y: number) => void;
@@ -68,10 +76,16 @@ interface CardProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-function ShotCard({ shot, index, width, selected, dropBefore, dropAfter, onMenu, onReorder, containerRef }: CardProps) {
+function ShotCard({ shot, index, width, selected, crosses, dropBefore, dropAfter, onMenu, onReorder, containerRef }: CardProps) {
   const thumb = useStore((s) => s.thumbnails[shot.id]);
   const selectShot = useStore((s) => s.selectShot);
   const playingHere = useStore((s) => s.playback !== null && s.shotIndex === index);
+  const cameraName = useStore((s) =>
+    s.project.cameras.length > 1 ? s.project.cameras.find((c) => c.id === shot.cameraId)?.name : undefined,
+  );
+  const type = shotTypeInfo(shot.shotType);
+  const move = moveLabel(shot.cameraMove);
+  const summary = [cameraName, type?.label, move].filter(Boolean).join(' · ');
   const [renaming, setRenaming] = useState(false);
 
   /** Click selects; dragging the card reorders it. */
@@ -148,10 +162,24 @@ function ShotCard({ shot, index, width, selected, dropBefore, dropAfter, onMenu,
         onMenu(e.clientX, e.clientY);
       }}
       data-playing={playingHere || undefined}
+      title={summary || undefined}
     >
       <div className="thumb" style={{ height: CARD_HEIGHT }}>
         {thumb ? <img src={thumb} alt="" draggable={false} /> : <div className="thumb-empty" />}
         <span className="shot-num">{index + 1}</span>
+        {cameraName && <span className="shot-cam">{cameraName.replace(/^Cam /, '')}</span>}
+        {(type || move) && (
+          <span className="shot-type">
+            {type?.short}
+            {type && move ? ' · ' : ''}
+            {move}
+          </span>
+        )}
+        {crosses && (
+          <span className="shot-warn" title="Crosses the 180° line from the previous shot">
+            <Icon.warning />
+          </span>
+        )}
         <div className="resize-handle" onPointerDown={onResizeDown} title="Drag to change length" />
       </div>
       <div className="shot-meta">

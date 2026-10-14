@@ -100,7 +100,8 @@ input {
   justify-content: space-between;
   padding: 0 12px;
   pointer-events: none;
-  z-index: 20;
+  /* Above the add button, so the menu and export panel cover it. */
+  z-index: 22;
 }
 
 .top-bar > * {
@@ -764,22 +765,6 @@ input {
   color: var(--end);
 }
 
-.lens-chip-wrap {
-  position: absolute;
-  transform: translateX(-50%);
-  pointer-events: auto;
-}
-
-.lens-chip {
-  height: 30px;
-  font-size: var(--fs-s);
-}
-
-.lens-pop {
-  padding: 8px;
-  width: 260px;
-}
-
 /* ---------- 3D labels ---------- */
 .scene-labels {
   position: fixed;
@@ -893,6 +878,11 @@ input {
   animation: pop-in 220ms var(--ease);
 }
 
+/* Clear of the camera chips under the frame. */
+.app.camera-view .hint {
+  bottom: 214px;
+}
+
 .marquee {
   position: fixed;
   border: 1px solid var(--accent);
@@ -900,4 +890,462 @@ input {
   border-radius: 3px;
   pointer-events: none;
   z-index: 25;
+}
+
+/* ---------- Phase 2: camera tools ---------- */
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-note {
+  font-size: var(--fs-s);
+  color: var(--text-dim);
+}
+
+.tool-note b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tool-label {
+  font-size: var(--fs-s);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.segmented.tabs {
+  display: flex;
+}
+
+.segmented.tabs button {
+  flex: 1;
+}
+
+.chip.add {
+  border-style: dashed;
+}
+
+.row-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.text-btn.strong {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.shapes-sep {
+  grid-column: span 3;
+  height: 1px;
+  background: var(--line);
+  margin: 2px 4px;
+}
+
+/* Camera view chips */
+.camera-chips {
+  position: absolute;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.chip-row {
+  display: flex;
+  gap: 6px;
+}
+
+.cam-chip {
+  height: 30px;
+  font-size: var(--fs-s);
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.cam-chip.icon-only {
+  padding: 0 8px;
+  color: var(--text-dim);
+}
+
+.cam-chip.lit {
+  color: var(--accent);
+}
+
+.chip-pop {
+  position: absolute;
+  bottom: 40px;
+  width: 280px;
+  padding: 10px;
+}
+
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--surface-hover);
+}
+
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch {
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  transition: background 150ms var(--ease);
+  flex: none;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 150ms var(--ease);
+}
+
+.toggle input:checked + .switch {
+  background: var(--accent);
+}
+
+.toggle input:checked + .switch::after {
+  transform: translateX(12px);
+}
+
+.toggle input:focus-visible + .switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.axis-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  color: #ff8a80;
+}
+
+/* Frame guides */
+.guide-thirds,
+.guide-safe,
+.guide-horizon {
+  position: absolute;
+  pointer-events: none;
+}
+
+.guide-thirds i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.guide-thirds i.h {
+  top: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 1px;
+}
+
+.guide-safe {
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+
+.guide-safe.title {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.guide-safe span {
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.guide-horizon {
+  overflow: hidden;
+}
+
+.guide-horizon line {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+}
+
+.guide-horizon line.level {
+  stroke: #7bd88f;
+  stroke-dasharray: none;
+}
+
+/* Labels */
+.free-label {
+  font-size: var(--fs-m);
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(20, 22, 26, 0.82);
+  border: 1.5px solid;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.cam-label.idle {
+  opacity: 0.6;
+}
+
+/* Shot card badges */
+.shot-cam {
+  position: absolute;
+  right: 6px;
+  top: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.shot-type {
+  position: absolute;
+  left: 4px;
+  right: 12px;
+  bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shot-warn {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  color: #ff8a80;
+  display: grid;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+
+.shot-cam + .shot-type {
+  right: 12px;
+}
+
+/* ---------- Radial menu ---------- */
+.radial {
+  position: fixed;
+  width: 0;
+  height: 0;
+  z-index: 50;
+}
+
+.radial-hub {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px rgba(245, 165, 36, 0.18);
+}
+
+.radial-item {
+  position: absolute;
+  left: -32px;
+  top: -32px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--surface);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  animation: radial-in 200ms var(--ease) both;
+  transition: background 150ms var(--ease);
+}
+
+.radial-item span {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.radial-item:hover {
+  background: rgba(70, 74, 82, 0.92);
+}
+
+.radial-item:hover span {
+  color: var(--text);
+}
+
+@keyframes radial-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+/* ---------- Export ---------- */
+.export-panel {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  width: 320px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 30;
+  transform-origin: top left;
+}
+
+.export-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.icon-btn.ghost {
+  height: 28px;
+  min-width: 28px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+}
+
+.export-kinds {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-kind {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  text-align: left;
+  border: 1px solid transparent;
+  transition: background 150ms var(--ease), border-color 150ms var(--ease);
+}
+
+.export-kind span {
+  display: flex;
+  flex-direction: column;
+}
+
+.export-kind b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.export-kind small {
+  font-size: var(--fs-s);
+}
+
+.export-kind:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.export-kind.on {
+  background: var(--accent-soft);
+  border-color: rgba(245, 165, 36, 0.5);
+  color: var(--accent);
+}
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  min-height: 60px;
+}
+
+.export-options .segmented {
+  align-self: flex-start;
+}
+
+.primary-btn {
+  height: 38px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #1b1d21;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 150ms var(--ease), filter 150ms var(--ease);
+}
+
+.primary-btn:hover {
+  filter: brightness(1.06);
+}
+
+.primary-btn:active {
+  transform: scale(0.98);
+}
+
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+}
+
+.export-progress .bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.export-progress .bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
 }

@@ -1,12 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import type { CameraState, Vec3 } from '../model/types';
 import { verticalFov, aspectValue } from '../model/lens';
 import { cameraStateAt, objectStateAt } from '../model/scene';
+import { floorCentre, turnAround } from '../model/groups';
+import { walkCamera } from '../model/cameras';
+import { AxisLock } from '../model/axisLock';
 import { useStore } from '../store/store';
 import { cameraFrameRect } from '../ui/layout';
-import { heldKeys } from './shared';
+import { heldKeys, useTransient } from './shared';
 
 const v = (a: Vec3) => new THREE.Vector3(...a);
 const arr = (p: THREE.Vector3): Vec3 => [p.x, p.y, p.z];
@@ -19,16 +22,50 @@ function basis(state: CameraState) {
   return { forward, right, up };
 }
 
+/** Walking speed in metres per second; Shift runs. */
+const WALK_SPEED = 2;
+const RUN_SPEED = 6;
+
 /**
  * In Camera view, navigating moves the shot camera itself, as if handheld:
  * right drag pans/tilts in place, middle drag (or Space + left) trucks and
- * pedestals, the wheel dollies forward and back. Ctrl + wheel over the
- * viewport rotates the selected objects instead (in both views).
+ * pedestals, the wheel dollies forward and back, and W A S D walk it like a
+ * game camera (Q/E down/up, Shift faster). Ctrl + wheel over the viewport
+ * rotates the selected objects instead (in both views).
  */
 export function CameraViewControls() {
   const gl = useThree((s) => s.gl);
   const viewMode = useStore((s) => s.viewMode);
   const playing = useStore((s) => !!s.playback);
+  const walking = useRef(false);
+
+  // W A S D walk the camera while held. With objects selected the keys keep
+  // their object meaning (S + drag scales), so walking needs an empty selection.
+  useFrame((_, dt) => {
+    const s = useStore.getState();
+    const key = (k: string) => (heldKeys.has(k) ? 1 : 0);
+    const input = { forward: key('w') - key('s'), right: key('d') - key('a'), up: key('e') - key('q') };
+    const active =
+      viewMode === 'camera' &&
+      !playing &&
+      !s.selection.length &&
+      !useTransient.getState().dragging &&
+      (input.forward || input.right || input.up);
+    if (!active) {
+      if (walking.current) {
+        walking.current = false;
+        s.endGesture();
+      }
+      return;
+    }
+    if (!walking.current) {
+      walking.current = true;
+      s.beginGesture();
+    }
+    const speed = heldKeys.has('shift') ? RUN_SPEED : WALK_SPEED;
+    const current = cameraStateAt(s.project, s.shotIndex, s.phase);
+    s.setCamera(walkCamera(current, input, speed * Math.min(dt, 0.1)));
+  });
 
   useEffect(() => {
     const el = gl.domElement;
@@ -52,10 +89,11 @@ export function CameraViewControls() {
       const x0 = e.clientX;
       const y0 = e.clientY;
       let started = false;
+      // Ctrl keeps a pan/tilt (or truck/pedestal) on the direction it started in.
+      const lock = new AxisLock(4);
 
       const move = (ev: PointerEvent) => {
-        const dx = ev.clientX - x0;
-        const dy = ev.clientY - y0;
+        const [dx, dy] = lock.apply([ev.clientX - x0, ev.clientY - y0], ev.ctrlKey);
         if (!started) {
           if (Math.hypot(dx, dy) < 2) return;
           started = true;
@@ -115,13 +153,14 @@ export function CameraViewControls() {
         e.stopPropagation();
         holdWheelGesture();
         const step = (Math.sign(e.deltaY) * Math.PI) / 12;
-        const next: Record<string, ReturnType<typeof objectStateAt>> = {};
+        const current: Record<string, ReturnType<typeof objectStateAt>> = {};
         for (const id of s.selection) {
           const obj = s.project.objects.find((o) => o.id === id);
           if (!obj || obj.locked) continue;
-          const st = objectStateAt(s.project, s.shotIndex, s.phase, obj);
-          next[id] = { ...st, rotationY: st.rotationY + step };
+          current[id] = objectStateAt(s.project, s.shotIndex, s.phase, obj);
         }
+        const centre = floorCentre(Object.values(current));
+        const next = Object.fromEntries(Object.entries(current).map(([id, st]) => [id, turnAround(st, centre, step)]));
         s.setObjectStates(next);
         return;
       }

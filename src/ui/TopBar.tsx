@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
 import { AppMenu } from './AppMenu';
+import { ExportPanel } from './ExportPanel';
+import { useTransient } from '../viewport/shared';
 
 export function TopBar() {
   const name = useStore((s) => s.project.name);
@@ -9,6 +11,8 @@ export function TopBar() {
   const setViewMode = useStore((s) => s.setViewMode);
   const play = useStore((s) => s.play);
   const [menuOpen, setMenuOpen] = useState(false);
+  const exportOpen = useTransient((s) => s.exportOpen);
+  const setExportOpen = useTransient((s) => s.setExportOpen);
 
   return (
     <header className="top-bar">
@@ -22,6 +26,7 @@ export function TopBar() {
           <Icon.menu />
         </button>
         {menuOpen && <AppMenu onClose={() => setMenuOpen(false)} />}
+        {exportOpen && !menuOpen && <ExportPanel onClose={() => setExportOpen(false)} />}
       </div>
       <SceneName name={name} />
       <div className="top-right">

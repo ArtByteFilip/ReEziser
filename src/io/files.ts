@@ -1,13 +1,21 @@
 import type { Project } from '../model/types';
 import { FILE_EXTENSION, parseProject, serializeProject } from '../model/projectFile';
+import { desktop } from './desktop';
+
+/**
+ * Saving, opening and autosave. In the desktop app (Tauri) these go through
+ * native dialogs and the file system, and autosave lives in
+ * %APPDATA%/ReEziser/autosave. In a plain browser they use the File System
+ * Access API where available (else download / file input) and localStorage.
+ */
 
 const AUTOSAVE_KEY = 'reeziser.autosave';
 
-// Minimal typings for the File System Access API (Chromium; also what Tauri's webview offers).
+// Minimal typings for the File System Access API (Chromium).
 interface FileHandle {
   name: string;
   getFile(): Promise<File>;
-  createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
+  createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
 }
 type PickerWindow = Window & {
   showSaveFilePicker?: (opts: unknown) => Promise<FileHandle>;
@@ -16,10 +24,18 @@ type PickerWindow = Window & {
 
 const pickerTypes = [{ description: 'ReEziser project', accept: { 'application/json': [FILE_EXTENSION] } }];
 
+/** Where Save writes without asking: a browser file handle or a desktop path. */
 let currentHandle: FileHandle | null = null;
+let currentPath: string | null = null;
 
 export function forgetFileHandle(): void {
   currentHandle = null;
+  currentPath = null;
+}
+
+/** Remembers the file a project came from (desktop: opened by double-click). */
+export function rememberPath(path: string): void {
+  currentPath = path;
 }
 
 function safeFileName(name: string): string {
@@ -29,6 +45,15 @@ function safeFileName(name: string): string {
 /** Saves the project. Returns false when the user cancelled. */
 export async function saveProject(project: Project, saveAs = false): Promise<boolean> {
   const text = serializeProject(project);
+  if (desktop) {
+    if (!currentPath || saveAs) {
+      const path = await desktop.pickSavePath(safeFileName(project.name) + FILE_EXTENSION, 'ReEziser project', FILE_EXTENSION);
+      if (!path) return false;
+      currentPath = path;
+    }
+    await desktop.writeFile(currentPath, new TextEncoder().encode(text));
+    return true;
+  }
   const w = window as PickerWindow;
   if (w.showSaveFilePicker) {
     try {
@@ -47,17 +72,19 @@ export async function saveProject(project: Project, saveAs = false): Promise<boo
       throw e;
     }
   }
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = safeFileName(project.name) + FILE_EXTENSION;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  download(new Blob([text], { type: 'application/json' }), safeFileName(project.name) + FILE_EXTENSION);
   return true;
 }
 
 /** Lets the user pick a project file. Resolves null when cancelled. */
 export async function openProject(): Promise<Project | null> {
+  if (desktop) {
+    const path = await desktop.pickOpenPath('ReEziser project', FILE_EXTENSION);
+    if (!path) return null;
+    const project = parseProject(await desktop.readTextFile(path));
+    currentPath = path;
+    return project;
+  }
   const w = window as PickerWindow;
   if (w.showOpenFilePicker) {
     try {
@@ -87,17 +114,61 @@ export async function openProject(): Promise<Project | null> {
   });
 }
 
-export function writeAutosave(project: Project): void {
+/**
+ * Saves an exported file (video, PDF, CSV). Asks where to save when the
+ * platform can; otherwise downloads it. Returns false when the user cancelled.
+ */
+export async function saveExport(blob: Blob, baseName: string, extension: string, description: string): Promise<boolean> {
+  const name = safeFileName(baseName) + extension;
+  if (desktop) {
+    const path = await desktop.pickSavePath(name, description, extension);
+    if (!path) return false;
+    await desktop.writeFile(path, new Uint8Array(await blob.arrayBuffer()));
+    return true;
+  }
+  const w = window as PickerWindow;
+  if (w.showSaveFilePicker) {
+    try {
+      const handle = await w.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description, accept: { [blob.type || 'application/octet-stream']: [extension] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (e) {
+      if ((e as DOMException).name === 'AbortError') return false;
+      throw e;
+    }
+  }
+  download(blob, name);
+  return true;
+}
+
+function download(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Best effort: autosave must never interrupt the user. */
+export async function writeAutosave(project: Project): Promise<void> {
+  const text = serializeProject(project);
   try {
-    localStorage.setItem(AUTOSAVE_KEY, serializeProject(project));
+    if (desktop) await desktop.writeAutosave(text);
+    else localStorage.setItem(AUTOSAVE_KEY, text);
   } catch {
-    // Storage can be unavailable (private mode, quota); autosave is best effort.
+    // Storage can be unavailable (private mode, quota, disk); autosave is best effort.
   }
 }
 
-export function readAutosave(): Project | null {
+export async function readAutosave(): Promise<Project | null> {
   try {
-    const text = localStorage.getItem(AUTOSAVE_KEY);
+    const text = desktop ? await desktop.readAutosave() : localStorage.getItem(AUTOSAVE_KEY);
     return text ? parseProject(text) : null;
   } catch {
     return null;

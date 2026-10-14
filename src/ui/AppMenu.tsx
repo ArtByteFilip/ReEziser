@@ -5,6 +5,7 @@ import { createProject } from '../model/defaults';
 import type { Fps } from '../model/types';
 import { forgetFileHandle } from '../io/files';
 import { openProjectFlow, saveProjectFlow } from './fileActions';
+import { useTransient } from '../viewport/shared';
 
 const FPS_OPTIONS: Fps[] = [24, 25, 30];
 
@@ -44,12 +45,13 @@ export function AppMenu({ onClose }: { onClose: () => void }) {
           const fresh = createProject();
           forgetFileHandle();
           apply((d) => Object.assign(d, fresh));
-          useStore.setState({ shotIndex: 0, phase: 'start', selection: [], cameraSelected: false });
+          useStore.setState({ shotIndex: 0, phase: 'start', selection: [], selectedCameraId: null, subjectId: null });
         })}
       />
       <MenuItem label="Open…" shortcut="Ctrl+O" onClick={run(openProjectFlow)} />
       <MenuItem label="Save" shortcut="Ctrl+S" onClick={run(() => saveProjectFlow(false))} />
       <MenuItem label="Save as…" shortcut="Ctrl+Shift+S" onClick={run(() => saveProjectFlow(true))} />
+      <MenuItem label="Export…" shortcut="Ctrl+E" onClick={run(() => useTransient.getState().setExportOpen(true))} />
       <div className="menu-sep" />
       <MenuItem label="Undo" shortcut="Ctrl+Z" disabled={!canUndo} onClick={() => useStore.getState().undo()} />
       <MenuItem label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo} onClick={() => useStore.getState().redo()} />

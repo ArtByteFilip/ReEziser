@@ -1,26 +1,27 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useStore, currentFrame } from '../store/store';
-import { resolveCamera, resolveFrame } from '../model/scene';
+import { resolveFrame } from '../model/scene';
+import { cameraStateFor } from '../model/cameras';
 import { kindHeight, viewportApi } from '../viewport/shared';
 
+const CAMERA_PREFIX = 'cam:';
+
 /**
- * Text floating above objects (their labels) and the camera name in Director
- * view. Plain DOM positioned every frame from the 3D scene.
+ * Text floating in the scene: object labels, free labels, and camera names in
+ * Director view. Plain DOM positioned every frame from the 3D scene.
  */
 export function SceneLabels() {
   const objects = useStore((s) => s.project.objects);
-  const cameraName = useStore((s) => {
-    const shot = s.project.shots[s.shotIndex];
-    return s.project.cameras.find((c) => c.id === shot.cameraId)?.name ?? '';
-  });
+  const cameras = useStore((s) => s.project.cameras);
+  const activeCamera = useStore((s) => s.project.shots[s.shotIndex].cameraId);
   const viewMode = useStore((s) => s.viewMode);
   const playing = useStore((s) => !!s.playback);
-  const cameraSelected = useStore((s) => s.cameraSelected);
+  const selectedCameraId = useStore((s) => s.selectedCameraId);
   const refs = useRef(new Map<string, HTMLDivElement>());
 
-  const labelled = objects.filter((o) => o.label);
-  const showCamera = viewMode === 'director' && !playing;
+  const labelled = objects.filter((o) => (o.kind === 'label' ? o.text : o.label));
+  const showCameras = viewMode === 'director' && !playing;
 
   useEffect(() => {
     let raf = 0;
@@ -46,8 +47,10 @@ export function SceneLabels() {
         el.style.transform = `translate(-50%, -100%) translate(${Math.round(x)}px, ${Math.round(y)}px)`;
       };
       for (const [id, el] of refs.current) {
-        if (id === '__camera') {
-          const c = resolveCamera(s.project, shotIndex, t);
+        if (id.startsWith(CAMERA_PREFIX)) {
+          const camId = id.slice(CAMERA_PREFIX.length);
+          if (!s.project.cameras.some((c) => c.id === camId)) continue;
+          const c = cameraStateFor(s.project, shotIndex, t, camId);
           p.set(c.position[0], c.position[1] + 0.22, c.position[2]);
           place(el, true);
           continue;
@@ -55,7 +58,8 @@ export function SceneLabels() {
         const obj = s.project.objects.find((o) => o.id === id);
         const st = states[id];
         if (!obj || !st) continue;
-        p.set(st.position[0], st.position[1] + kindHeight(obj) * st.scale[1] + 0.15, st.position[2]);
+        const above = obj.kind === 'label' ? 0.02 : 0.15;
+        p.set(st.position[0], st.position[1] + kindHeight(obj) * st.scale[1] + above, st.position[2]);
         place(el, st.visible);
       }
     };
@@ -71,15 +75,25 @@ export function SceneLabels() {
   return (
     <div className="scene-labels" aria-hidden="true">
       {labelled.map((o) => (
-        <div key={o.id} ref={setRef(o.id)} className="obj-label">
-          {o.label}
+        <div
+          key={o.id}
+          ref={setRef(o.id)}
+          className={o.kind === 'label' ? 'free-label' : 'obj-label'}
+          style={o.kind === 'label' ? { borderColor: o.color } : undefined}
+        >
+          {o.kind === 'label' ? o.text : o.label}
         </div>
       ))}
-      {showCamera && (
-        <div ref={setRef('__camera')} className={`cam-label${cameraSelected ? ' selected' : ''}`}>
-          {cameraName}
-        </div>
-      )}
+      {showCameras &&
+        cameras.map((c) => (
+          <div
+            key={c.id}
+            ref={setRef(CAMERA_PREFIX + c.id)}
+            className={`cam-label${selectedCameraId === c.id ? ' selected' : ''}${c.id === activeCamera ? '' : ' idle'}`}
+          >
+            {c.name}
+          </div>
+        ))}
     </div>
   );
 }

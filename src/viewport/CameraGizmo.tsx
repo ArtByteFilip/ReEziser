@@ -5,16 +5,20 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import type { CameraState } from '../model/types';
 import { verticalFov } from '../model/lens';
 import { useStore } from '../store/store';
-import { ACCENT, viewportApi } from './shared';
+import { ACCENT, armRadial, useTransient, viewportApi } from './shared';
+import { AxisLock } from '../model/axisLock';
 
 const FRUSTUM_DEPTH = 1.4;
 
 interface Props {
   state: CameraState;
   aspect: number;
+  /** Set for clickable cameras; ghosts have none. */
+  cameraId?: string;
+  /** Films the current shot. Only this camera can be dragged. */
+  active?: boolean;
   selected?: boolean;
   ghost?: boolean;
-  interactive?: boolean;
 }
 
 /** Orientation of a camera state as a quaternion (looks at target, then rolls). */
@@ -28,8 +32,11 @@ export function cameraQuaternion(state: CameraState): THREE.Quaternion {
   return q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), state.roll));
 }
 
-/** The shot camera as seen in Director view: a small body and its view pyramid. */
-export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Props) {
+/**
+ * A camera as seen in Director view: a small body and its view pyramid.
+ * Cameras not used by the current shot are drawn dimmed.
+ */
+export function CameraGizmo({ state, aspect, cameraId, active, selected, ghost }: Props) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const quaternion = useMemo(() => cameraQuaternion(state), [state]);
@@ -52,15 +59,23 @@ export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Pro
     ][];
   }, [state.focalLength, aspect]);
 
-  const color = selected ? ACCENT : ghost ? '#8b9099' : '#d8dbe0';
+  const dimmed = ghost || !active;
+  const color = selected ? ACCENT : dimmed ? '#8b9099' : '#d8dbe0';
+  const opacity = ghost ? 0.3 : 1;
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     viewportApi.pointerHitObject = true;
-    if (!interactive || e.button !== 0) return;
-    e.stopPropagation();
+    if (!cameraId) return;
     const store = useStore.getState();
     if (store.playback) return;
-    store.selectCamera();
+    if (e.button === 2) {
+      armRadial(e.nativeEvent, { kind: 'camera', id: cameraId });
+      return;
+    }
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    store.selectCamera(cameraId);
+    if (!active) return;
     // Drag the camera across the floor; it keeps looking the same way.
     const start = { ...state };
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -state.position[1]);
@@ -76,6 +91,8 @@ export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Pro
     const grab = hit(e.clientX, e.clientY);
     if (!grab) return;
     let started = false;
+    // Ctrl keeps the camera on the floor axis it started moving along.
+    const lock = new AxisLock(0.08);
     const move = (ev: PointerEvent) => {
       const p = hit(ev.clientX, ev.clientY);
       if (!p) return;
@@ -84,11 +101,20 @@ export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Pro
         started = true;
         useStore.getState().beginGesture();
       }
-      let dx = p.x - grab.x;
-      let dz = p.z - grab.z;
+      let [dx, dz] = lock.apply([p.x - grab.x, p.z - grab.z], ev.ctrlKey);
+      const s0 = start.position;
+      useTransient
+        .getState()
+        .setGuides(
+          lock.axis === 0
+            ? [[s0[0] - 30, s0[2], s0[0] + 30, s0[2]]]
+            : lock.axis === 1
+              ? [[s0[0], s0[2] - 30, s0[0], s0[2] + 30]]
+              : [],
+        );
       if (!ev.shiftKey) {
-        dx = Math.round((start.position[0] + dx) * 4) / 4 - start.position[0];
-        dz = Math.round((start.position[2] + dz) * 4) / 4 - start.position[2];
+        if (lock.axis !== 1) dx = Math.round((start.position[0] + dx) * 4) / 4 - start.position[0];
+        if (lock.axis !== 0) dz = Math.round((start.position[2] + dz) * 4) / 4 - start.position[2];
       }
       useStore.getState().setCamera({
         ...start,
@@ -100,6 +126,7 @@ export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Pro
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (started) useStore.getState().endGesture();
+      useTransient.getState().setGuides([]);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -110,18 +137,24 @@ export function CameraGizmo({ state, aspect, selected, ghost, interactive }: Pro
       <group onPointerDown={onPointerDown}>
         <mesh position={[0, 0, 0.12]}>
           <boxGeometry args={[0.22, 0.2, 0.3]} />
-          <meshLambertMaterial color={color} transparent={ghost} opacity={ghost ? 0.3 : 1} />
+          <meshLambertMaterial color={color} transparent={ghost} opacity={opacity} />
         </mesh>
         <mesh position={[0, 0, -0.06]} rotation-x={Math.PI / 2}>
           <cylinderGeometry args={[0.07, 0.08, 0.1, 16]} />
-          <meshLambertMaterial color="#3a3d44" transparent={ghost} opacity={ghost ? 0.3 : 1} />
+          <meshLambertMaterial color="#3a3d44" transparent={ghost} opacity={opacity} />
         </mesh>
         {/* Invisible, larger hit area so the camera is easy to grab */}
         <mesh position={[0, 0, -0.4]} visible={false}>
           <boxGeometry args={[0.6, 0.5, 1]} />
         </mesh>
       </group>
-      <Line points={frustum} color={color} lineWidth={selected ? 2 : 1.2} transparent opacity={ghost ? 0.35 : 0.9} />
+      <Line
+        points={frustum}
+        color={color}
+        lineWidth={selected ? 2 : 1.2}
+        transparent
+        opacity={ghost ? 0.35 : active ? 0.9 : 0.45}
+      />
     </group>
   );
 }

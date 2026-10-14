@@ -1,0 +1,20 @@
+[package]
+name = "reeziser"
+version = "0.2.0"
+description = "ReEziser: a 3D sketchpad for films"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

@@ -10,6 +10,7 @@ import type {
 } from './types';
 import { evaluateCameraTrack, evaluateObjectTrack, vec3Equal } from './interpolate';
 import { createShot, newId } from './defaults';
+import { duplicateGroups, pruneGroups } from './groups';
 
 // ---------------------------------------------------------------------------
 // Evaluation
@@ -218,7 +219,9 @@ export function clearObjectMotion(project: Project, shotIndex: number, objectId:
 
 export function clearCameraMotion(project: Project, shotIndex: number): void {
   const shot = project.shots[shotIndex];
-  if (!shot || !shot.cameraTrack.length) return;
+  if (!shot) return;
+  delete shot.cameraMove;
+  if (!shot.cameraTrack.length) return;
   const first = shot.cameraTrack[0].value;
   shot.cameraTrack = shot.cameraTrack.map((k) => ({ ...k, value: first }));
 }
@@ -278,6 +281,7 @@ export function deleteObjects(project: Project, ids: string[]): void {
   for (const shot of project.shots) {
     for (const id of ids) delete shot.objectTracks[id];
   }
+  pruneGroups(project, ids);
 }
 
 /**
@@ -292,6 +296,7 @@ export function duplicateObjects(
   offset: [number, number, number] = [0.5, 0, 0.5],
 ): string[] {
   const newIds: string[] = [];
+  const copies: Record<string, string> = {};
   for (const id of ids) {
     const obj = project.objects.find((o) => o.id === id);
     if (!obj) continue;
@@ -308,6 +313,8 @@ export function duplicateObjects(
     };
     project.objects.push(copy);
     newIds.push(copy.id);
+    copies[id] = copy.id;
   }
+  duplicateGroups(project, copies);
   return newIds;
 }
