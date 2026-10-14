@@ -820,13 +820,14 @@ input {
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(20, 22, 26, 0.75);
-  color: var(--text);
+  /* Always a dark pill with light text, so it reads on any scene and theme. */
+  color: #eceef1;
   white-space: nowrap;
   pointer-events: none;
 }
 
 .cam-label {
-  color: var(--text-dim);
+  color: #b4b9c1;
 }
 
 .cam-label.selected {
@@ -1149,7 +1150,7 @@ input {
   border-radius: 8px;
   background: rgba(20, 22, 26, 0.82);
   border: 1.5px solid;
-  color: var(--text);
+  color: #eceef1;
   white-space: nowrap;
 }
 

@@ -205,11 +205,23 @@ export function pickSubject<T extends { obj: SceneObject; state: ObjectState }>(
   for (const c of candidates) {
     if (!c.state.visible || c.obj.kind === 'arrow' || c.obj.kind === 'label') continue;
     const h = objectHeight(c.obj, c.state);
-    const q: Vec3 = [c.state.position[0] - p[0], c.state.position[1] + h / 2 - p[1], c.state.position[2] - p[2]];
-    const along = q[0] * f[0] + q[1] * f[1] + q[2] * f[2];
-    const off = Math.hypot(q[0] - f[0] * along, q[1] - f[1] * along, q[2] - f[2] * along);
-    // Things behind the camera count as far off the line of sight.
-    const score = (along > 0 ? off / along : 10 + off) * (c.obj.kind === 'figure' ? 0.5 : 1);
+    // How far the line of sight passes from the object, at its nearest point
+    // anywhere up its height (a sitting person's head counts, not just their middle).
+    let angle = Infinity;
+    let along = 0;
+    for (let k = 0; k <= 8; k++) {
+      const q: Vec3 = [c.state.position[0] - p[0], c.state.position[1] + (h * k) / 8 - p[1], c.state.position[2] - p[2]];
+      const a = q[0] * f[0] + q[1] * f[1] + q[2] * f[2];
+      const off = Math.hypot(q[0] - f[0] * a, q[1] - f[1] * a, q[2] - f[2] * a);
+      // Things behind the camera count as far off the line of sight.
+      const ang = a > 0 ? off / a : 10 + off;
+      if (ang < angle) {
+        angle = ang;
+        along = a;
+      }
+    }
+    // People first; and of two things on the line, the nearer one (it hides the other).
+    const score = (angle + Math.max(0, along) * 0.005) * (c.obj.kind === 'figure' ? 0.4 : 1);
     if (score < bestScore) {
       bestScore = score;
       best = c;

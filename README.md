@@ -2,6 +2,29 @@
 
 A fast 3D sketchpad for films, music videos and scenes: block out a set with simple shapes and people, place cameras, split the action into shots, and play it back as an animatic.
 
+![The sample scene in Director view: two people, a table, three cameras and the shot strip](docs/screenshots/director-view.png)
+
+It is a sketchpad, not Blender: the canvas is everything, there are only a few buttons on screen, and everything else appears where you need it. Things are named the way filmmakers talk: close-up, 50 mm, dolly in.
+
+## What it does
+
+- **People and props.** Posable mannequins (stand, walk, run, sit, point, lie) and simple shapes, moved by dragging them across the floor. No gizmos.
+- **Cameras that speak film.** Several cameras with cuts between them, lenses from 14 to 135 mm, aspect ratios from 2.39:1 to 9:16, one-click shot types (wide to extreme close-up) and angles, and camera-move presets (pan, tilt, dolly, truck, orbit, crane, zoom).
+- **Shots, not keyframes.** Each shot has a Start and an End; whatever changes in between animates smoothly, and the next shot carries on from where the last one ended.
+- **Fast motion.** Draw a path on the floor and a person walks it, or perform the move live while the shot plays. A detailed timeline is there for steps in between and easing.
+- **Music.** Add a track, see its waveform and beats under the shots, and snap cuts to the beat.
+- **Export.** MP4 animatic with sound, storyboard PDF, CSV shot list, and a glTF scene for Blender with the whole film as an animation.
+- **Windows desktop app.** Built with Tauri 2, with autosave, the `.reeziser` file type, a light theme and touch support for tablets. It also runs in a browser.
+
+| | |
+|---|---|
+| ![Camera view of a medium shot with the rule-of-thirds guide and the camera chips](docs/screenshots/camera-view.png) | ![The camera panel: pick a shot type and an angle, and the camera frames the person](docs/screenshots/framing.png) |
+| **Camera view:** exactly what the lens sees, with frame guides and the camera tools under the frame. | **One-click framing:** pick a shot type and angle; the camera frames the person for you. |
+| ![The detailed timeline under a walking person, with a step in the middle of the shot](docs/screenshots/timeline.png) | ![The light theme with the export panel open](docs/screenshots/light-theme-export.png) |
+| **Timeline:** steps in between, retiming, easing, and splitting a shot. | **Export** to video, storyboard PDF, shot list or a 3D scene. Light theme shown. |
+
+The pictures show the sample scene that ships with the app (Menu → Open sample scene).
+
 ## Run
 
 ```sh
@@ -18,8 +41,9 @@ npm run desktop:build  # installer: src-tauri/target/release/bundle/msi/*.msi
 
 | Path | What lives there |
 |---|---|
-| `src/model/` | Pure logic with no React: data types, interpolation, lenses, poses, shot/state rules, cameras, framing, camera moves, the 180° line, groups, undo history, file format. Covered by `model.test.ts` and `phase2.test.ts`. |
-| `src/export/` | Video (MP4), storyboard (PDF) and shot list (CSV). The pure parts are covered by `export.test.ts`. |
+| `src/model/` | Pure logic with no React: data types, interpolation, lenses, poses, shot/state rules, cameras, framing, camera moves, the 180° line, groups, timeline, paths and takes, beats, the sample scene, undo history, file format. Covered by unit tests. |
+| `src/export/` | Video (MP4), storyboard (PDF), shot list (CSV) and 3D scene (glTF). The pure parts are covered by `export.test.ts`. |
+| `src/audio/` | Decoding, waveform and playback of the soundtrack. |
 | `src/store/` | Zustand store that connects the model to the UI (selection, current shot, Start/End, playback, undo). |
 | `src/viewport/` | React Three Fiber scene: objects, mannequin, camera gizmo, gizmo-free drag, Camera-view controls, thumbnails. |
 | `src/ui/` | The few on-screen controls: top bar, add palette, context panel, shot strip, camera frame, labels, menu. |

@@ -57,11 +57,11 @@ test('builds a two-shot scene and plays it', async ({ page }) => {
   await page.keyboard.press('Escape');
   const camZ = () => page.evaluate(() => (window as any).__viewport.camera.position.z as number);
   const z0 = await camZ();
+  // Hold W until the camera has moved; software WebGL can be slow to draw frames.
   await page.keyboard.down('w');
-  await page.waitForTimeout(600);
+  await expect.poll(camZ, { timeout: 5000 }).toBeLessThan(z0 - 0.2);
   await page.keyboard.up('w');
   await page.waitForTimeout(150);
-  expect(await camZ()).toBeLessThan(z0 - 0.2);
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(150);
   expect(await camZ()).toBeCloseTo(z0, 3);

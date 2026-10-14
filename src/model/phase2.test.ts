@@ -208,6 +208,20 @@ describe('shot types', () => {
     expect(subjectFrom(fig, st(0)).height).toBeCloseTo(1.75);
   });
 
+  it('picks the seated person the camera aims at, not the counter behind them', () => {
+    const project = createProject();
+    const peter = createObject('figure', []);
+    const counter = createObject('box', []);
+    const candidates = [
+      { obj: counter, state: st(3.5, -2, { scale: [2.5, 1.05, 0.7] }) },
+      { obj: peter, state: st(1, 0, { pose: 'sit' }) },
+    ];
+    // Camera over a shoulder, aimed at the seated head; the line goes on through the counter.
+    const pick = pickSubject(cam([-2.5, 1.4, 2.5], [1, 1.1, 0]), candidates);
+    expect(pick?.obj.id).toBe(peter.id);
+    void project;
+  });
+
   it('picks the person nearest the line of sight as the subject', () => {
     const { project, ids } = withObjects('box', 'figure', 'figure');
     const states = [st(0, 0), st(3, 0), st(-0.3, 0)];
