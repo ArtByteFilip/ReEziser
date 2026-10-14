@@ -1,5 +1,6 @@
 import { useStore } from '../store/store';
-import { openProject, saveProject } from '../io/files';
+import { forgetFileHandle, openProject, saveProject } from '../io/files';
+import type { Project } from '../model/types';
 import { soundtrackFromFile } from '../audio/soundtrack';
 
 export async function saveProjectFlow(saveAs: boolean): Promise<void> {
@@ -9,6 +10,16 @@ export async function saveProjectFlow(saveAs: boolean): Promise<void> {
   } catch {
     notify('Could not save the project.');
   }
+}
+
+/** New scene and the sample replace the scene undoably, rather than asking first. */
+export function replaceScene(next: Project): void {
+  forgetFileHandle();
+  useStore.getState().apply((d) => {
+    for (const key of Object.keys(d) as (keyof Project)[]) delete d[key];
+    Object.assign(d, next);
+  });
+  useStore.setState({ shotIndex: 0, phase: 'start', selection: [], selectedCameraId: null, subjectId: null });
 }
 
 /** Picks a music or dialogue file and puts it under the film. */

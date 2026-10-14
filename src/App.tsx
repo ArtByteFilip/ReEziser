@@ -14,7 +14,10 @@ import { SceneLabels } from './ui/SceneLabels';
 import { HintToast, MarqueeLayer, PlaybackOverlay, TakeOverlay } from './ui/Overlays';
 import { RadialMenu } from './ui/RadialMenu';
 import { Timeline } from './ui/Timeline';
+import { Onboarding } from './ui/Onboarding';
 import { useSoundtrack } from './audio/useSoundtrack';
+import { useApplyTheme } from './ui/theme';
+import { useTouchGestures } from './viewport/touch';
 import { useTransient } from './viewport/shared';
 import { openProjectFlow, saveProjectFlow } from './ui/fileActions';
 
@@ -29,6 +32,8 @@ export function App() {
   useAutosave();
   useWindowTitle();
   useSoundtrack();
+  useApplyTheme();
+  useTouchGestures();
 
   return (
     <div className={`app${playing ? ' playing' : ''}${cameraView ? ' camera-view' : ''}${timelineOpen && !playing ? ' timeline-open' : ''}`}>
@@ -47,6 +52,7 @@ export function App() {
           <RadialMenu />
         </>
       )}
+      <Onboarding />
       <PlaybackOverlay />
       <TakeOverlay />
       <HintToast />

@@ -7,6 +7,9 @@ import { insertShot } from '../model/scene';
 import { lensText, shotListCsv } from './shotList';
 import { buildPdf, PAPER } from './pdf';
 import { storyboardCells, videoSize, wrapText } from './layout';
+import { sampleFilm, uniqueNames } from './gltf';
+import { setCameraState, setObjectState, resolveCamera } from '../model/scene';
+import { createObject } from '../model/defaults';
 
 describe('shot list', () => {
   it('lists every shot with camera, lens, type, move and note', () => {
@@ -102,5 +105,49 @@ describe('pdf', () => {
     const entries = [...text.slice(start).matchAll(/^(\d{10}) 00000 n $/gm)].map((m) => Number(m[1]));
     entries.forEach((off, i) => expect(text.slice(off).startsWith(`${i + 1} 0 obj`)).toBe(true));
     expect(text).toContain('/Title <FEFF');
+  });
+});
+
+describe('glTF film samples', () => {
+  it('samples every frame plus a moment before each cut, in order', () => {
+    const p = produce(createProject(), (d) => {
+      d.objects.push(createObject('box', []));
+      setObjectState(d, 0, 'end', d.objects[0].id, { ...d.objects[0].base, position: [3, 0, 0] });
+      insertShot(d, 0);
+      d.shots[1].duration = 1;
+    });
+    const s = sampleFilm(p, 10);
+    expect(s.times[0]).toBe(0);
+    expect(s.times[s.times.length - 1]).toBe(4);
+    s.times.slice(1).forEach((t, i) => expect(t).toBeGreaterThan(s.times[i]));
+    expect(s.times).toContain(2.999);
+    const box = s.objects[p.objects[0].id];
+    expect(box.position.length).toBe(s.times.length * 3);
+    expect(box.rotation.length).toBe(s.times.length * 4);
+    expect(box.position[box.position.length - 3]).toBeCloseTo(3);
+  });
+
+  it('the film camera jumps at a cut instead of gliding', () => {
+    let p = produce(createProject(), (d) => {
+      insertShot(d, 0);
+      addCamera(d, 1, 'start');
+    });
+    p = produce(p, (d) => setCameraState(d, 1, 'start', { ...resolveCamera(d, 1, 0), position: [-8, 1.6, 0] }));
+    const s = sampleFilm(p, 24);
+    const i = s.times.indexOf(2.999);
+    expect(s.camera.position[i * 3]).toBeCloseTo(p.cameras[0].base.position[0]);
+    expect(s.camera.position[(i + 1) * 3]).toBeCloseTo(-8);
+  });
+
+  it('hidden objects shrink to nothing', () => {
+    const p = produce(createProject(), (d) => {
+      d.objects.push(createObject('box', []));
+      setObjectState(d, 0, 'start', d.objects[0].id, { ...d.objects[0].base, visible: false });
+    });
+    expect(sampleFilm(p, 4).objects[p.objects[0].id].scale.slice(0, 3)).toEqual([0, 0, 0]);
+  });
+
+  it('gives nodes readable, unique names', () => {
+    expect(uniqueNames(['Chair', 'Chair', 'Anna', 'a.b', ''])).toEqual(['Chair', 'Chair 2', 'Anna', 'a b', 'Object']);
   });
 });

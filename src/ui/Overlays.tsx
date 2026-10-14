@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useStore, currentFrame } from '../store/store';
 import { resolveFrame, shotStartTime, totalDuration } from '../model/scene';
 import { kindHeight, useTransient, viewportApi } from '../viewport/shared';
+import { multiTouch } from '../viewport/touch';
 import { Icon } from './icons';
 
 /** While playing: a thin progress bar and a stop button; everything else hides. */
@@ -111,7 +112,15 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
     const x0 = e.clientX;
     const y0 = e.clientY;
     let moved = false;
+    let abandoned = false;
     const move = (ev: PointerEvent) => {
+      // Two fingers mean orbit or pinch, not a selection rectangle.
+      if (multiTouch()) {
+        abandoned = true;
+        setRect(null);
+        return;
+      }
+      if (abandoned) return;
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
       moved = true;
       setRect({ x0, y0, x1: ev.clientX, y1: ev.clientY });
@@ -120,6 +129,7 @@ export function MarqueeLayer({ children }: { children: React.ReactNode }) {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setRect(null);
+      if (abandoned) return;
       const store = useStore.getState();
       if (!moved) {
         if (!additive) store.clearSelection();

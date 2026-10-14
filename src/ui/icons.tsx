@@ -177,6 +177,12 @@ export const Icon = {
       <circle cx="12" cy="12" r="4" fill="#ff5c5c" stroke="none" />
     </Svg>
   ),
+  cube: () => (
+    <Svg>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+      <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" />
+    </Svg>
+  ),
   // Shape palette
   arrow: () => (
     <Svg size={28}>

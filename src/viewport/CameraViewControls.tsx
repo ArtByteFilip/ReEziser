@@ -7,6 +7,8 @@ import { cameraStateAt, objectStateAt } from '../model/scene';
 import { floorCentre, turnAround } from '../model/groups';
 import { walkCamera } from '../model/cameras';
 import { AxisLock } from '../model/axisLock';
+import { pinchOf } from '../model/gestures';
+import { touches } from './touch';
 import { useStore } from '../store/store';
 import { cameraFrameRect } from '../ui/layout';
 import { heldKeys, useTransient } from './shared';
@@ -66,6 +68,55 @@ export function CameraViewControls() {
     const current = cameraStateAt(s.project, s.shotIndex, s.phase);
     s.setCamera(walkCamera(current, input, speed * Math.min(dt, 0.1)));
   });
+
+  // Two fingers in Camera view: drag to pan/tilt in place, pinch to dolly.
+  useEffect(() => {
+    if (viewMode !== 'camera' || playing) return;
+    const el = gl.domElement;
+    let gesture: { start: CameraState; mid: { x: number; y: number }; distance: number; ids: number[] } | null = null;
+    const onMove = () => {
+      if (touches.size !== 2) {
+        if (gesture) {
+          gesture = null;
+          useStore.getState().endGesture();
+        }
+        return;
+      }
+      const ids = [...touches.keys()];
+      const [a, b] = ids.map((id) => touches.get(id)!);
+      const now = pinchOf(a, b);
+      const s = useStore.getState();
+      if (!gesture || gesture.ids.join() !== ids.join()) {
+        gesture = { start: cameraStateAt(s.project, s.shotIndex, s.phase), mid: now, distance: now.distance, ids };
+        s.beginGesture();
+        return;
+      }
+      const { start } = gesture;
+      const aspect = aspectValue(s.project.aspectRatio);
+      const rect = cameraFrameRect(aspect, el.clientWidth, el.clientHeight, false);
+      const radPerPx = ((verticalFov(start.focalLength, aspect) * Math.PI) / 180) / rect.height;
+      const dist = v(start.target).distanceTo(v(start.position));
+      const { forward } = basis(start);
+      // Look: same directions as right-dragging with the mouse.
+      const dir = forward.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -(now.x - gesture.mid.x) * radPerPx);
+      const r = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+      dir.applyAxisAngle(r, -(now.y - gesture.mid.y) * radPerPx);
+      if (Math.abs(dir.y) > 0.995) return;
+      // Dolly: spreading the fingers walks the camera forward.
+      const step = (now.distance - gesture.distance) * 0.01;
+      const position = v(start.position).add(forward.clone().multiplyScalar(step));
+      s.setCamera({ ...start, position: arr(position), target: arr(position.clone().add(dir.multiplyScalar(dist))) });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onMove);
+    window.addEventListener('pointercancel', onMove);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onMove);
+      window.removeEventListener('pointercancel', onMove);
+      if (gesture) useStore.getState().endGesture();
+    };
+  }, [gl, viewMode, playing]);
 
   useEffect(() => {
     const el = gl.domElement;

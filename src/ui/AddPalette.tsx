@@ -3,6 +3,7 @@ import type { ObjectKind } from '../model/types';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
 import { useTransient } from '../viewport/shared';
+import { useSettings } from '../store/settings';
 
 const SHAPES: { kind: ObjectKind; label: string; icon: () => React.ReactNode }[] = [
   { kind: 'figure', label: 'Person', icon: Icon.person },
@@ -27,6 +28,8 @@ export function AddPalette() {
   const ref = useRef<HTMLDivElement>(null);
   const addObject = useStore((s) => s.addObject);
   const empty = useStore((s) => s.project.objects.length === 0);
+  // While the first tip is showing it says this already.
+  const tipsDone = useSettings((s) => s.onboarding > 0);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +55,7 @@ export function AddPalette() {
       >
         <Icon.plus size={26} />
       </button>
-      {empty && !open && <div className="add-nudge">Add a person or shape</div>}
+      {empty && !open && tipsDone && <div className="add-nudge">Add a person or shape</div>}
       {open && (
         <div className="floating shapes" role="menu">
           {SHAPES.map((s) => (

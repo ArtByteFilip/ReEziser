@@ -7,7 +7,7 @@ import { resolveCamera, resolveFrame } from '../model/scene';
 import { kindHeight } from '../model/dimensions';
 import { ObjectNode } from './ObjectNode';
 import { cameraQuaternion } from './CameraGizmo';
-import { BACKGROUND, Stage } from './Stage';
+import { Stage } from './Stage';
 import { viewportApi } from './shared';
 
 export interface StillOptions {
@@ -23,6 +23,8 @@ export interface StillOptions {
 
 interface Job extends StillOptions {
   resolve: (canvas: HTMLCanvasElement) => void;
+  /** Instead of a picture, hand back copies of the objects as built (for 3D export). */
+  capture?: (objects: THREE.Object3D[]) => void;
 }
 
 /** Linear 0..255 -> sRGB 0..255; render targets hold linear colour. */
@@ -53,18 +55,39 @@ export function StillRenderer() {
   useEffect(() => () => target.dispose(), [target]);
 
   useEffect(() => {
-    viewportApi.renderStill = (opts) =>
-      new Promise((resolve) => {
-        queue.current.push({ ...opts, resolve });
-        if (!busy.current) {
-          busy.current = true;
-          setJob(queue.current.shift()!);
-        }
-      });
+    const enqueue = (job: Job) => {
+      queue.current.push(job);
+      if (!busy.current) {
+        busy.current = true;
+        setJob(queue.current.shift()!);
+      }
+    };
+    viewportApi.renderStill = (opts) => new Promise((resolve) => enqueue({ ...opts, resolve }));
+    viewportApi.captureObjects = (opts) =>
+      new Promise((resolve) => enqueue({ ...opts, width: 1, height: 1, resolve: () => {}, capture: resolve }));
   }, []);
 
   useFrame(() => {
     if (!job || committed.current !== job) return;
+    if (job.capture) {
+      // Each object is a group tagged with its id; copy it with its own materials.
+      const objects = scene.children
+        .filter((c) => c.userData.objectId)
+        .map((c) => {
+          const copy = c.clone(true);
+          copy.traverse((n) => {
+            const mesh = n as THREE.Mesh;
+            if (mesh.isMesh && mesh.material) mesh.material = (mesh.material as THREE.Material).clone();
+          });
+          return copy;
+        });
+      job.capture(objects);
+      committed.current = null;
+      const next = queue.current.shift() ?? null;
+      busy.current = next !== null;
+      setJob(next);
+      return;
+    }
     const { project, shotIndex, t, width: w, height: h } = job;
     const aspect = aspectValue(project.aspectRatio);
     target.setSize(w, h);
@@ -96,7 +119,6 @@ export function StillRenderer() {
 
   return createPortal(
     <>
-      <color attach="background" args={[BACKGROUND]} />
       <Stage shadows={false} />
       {job && (
         <StillScene

@@ -1,16 +1,17 @@
 import { ContactShadows, Grid } from '@react-three/drei';
+import { useSceneColors } from '../ui/theme';
 
-export const BACKGROUND = '#1b1d21';
-
-/** Floor, grid, lights and the soft contact shadow. */
+/** Background, floor, grid, lights and the soft contact shadow, in the theme's colours. */
 export function Stage({ shadows = true }: { shadows?: boolean }) {
+  const c = useSceneColors();
   return (
     <>
-      <hemisphereLight args={['#ffffff', '#3a3b40', 1.6]} />
+      <color attach="background" args={[c.background]} />
+      <hemisphereLight args={[c.skyLight, c.groundLight, 1.6]} />
       <directionalLight position={[6, 12, 8]} intensity={1.8} />
       <mesh rotation-x={-Math.PI / 2} position={[0, -0.01, 0]}>
         <planeGeometry args={[400, 400]} />
-        <meshLambertMaterial color="#26292e" />
+        <meshLambertMaterial color={c.floor} />
       </mesh>
       <Grid
         position={[0, 0, 0]}
@@ -19,8 +20,8 @@ export function Stage({ shadows = true }: { shadows?: boolean }) {
         sectionSize={5}
         cellThickness={0.6}
         sectionThickness={1}
-        cellColor="#3a3e45"
-        sectionColor="#4a4f58"
+        cellColor={c.cell}
+        sectionColor={c.section}
         fadeDistance={60}
         fadeStrength={1.5}
       />

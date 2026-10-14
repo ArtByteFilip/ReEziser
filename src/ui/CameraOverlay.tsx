@@ -41,7 +41,8 @@ export function CameraOverlay() {
   const { w, h } = useWindowSize();
   if (viewMode !== 'camera') return null;
   const r = cameraFrameRect(aspect, w, h, playing);
-  const dim = playing ? 'rgba(0,0,0,1)' : 'rgba(10,11,13,0.72)';
+  // Playback is letterboxed in black; editing dims in the theme's colour.
+  const dim = playing ? 'rgba(0,0,0,1)' : 'var(--frame-dim)';
   return (
     <div className="camera-overlay" aria-hidden={playing}>
       <div className="dim" style={{ left: 0, top: 0, width: w, height: r.y, background: dim }} />
@@ -94,6 +95,25 @@ function CameraChips({ x, y }: { x: number; y: number }) {
   const setOpen = useTransient((s) => s.setCameraChip);
   const ref = useRef<HTMLDivElement>(null);
   const cameraName = useStore((s) => s.project.cameras.find((c) => c.id === s.project.shots[s.shotIndex].cameraId)?.name);
+  const timelineOpen = useTransient((s) => s.timelineOpen);
+
+  // Keep the chips above the timeline when it is open over the frame.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!timelineOpen) {
+      el.style.top = `${y}px`;
+      return;
+    }
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const top = document.querySelector('.timeline')?.getBoundingClientRect().top;
+      el.style.top = `${top !== undefined ? Math.min(y, top - 44) : y}px`;
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, [timelineOpen, y]);
   const several = useStore((s) => s.project.cameras.length > 1);
   const focal = useStore((s) => cameraStateAt(s.project, s.shotIndex, s.phase).focalLength);
   const framing = useStore((s) => {

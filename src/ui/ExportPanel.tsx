@@ -6,6 +6,7 @@ import { totalDuration } from '../model/scene';
 import { exportVideo, ExportCancelled, type ExportResult } from '../export/video';
 import { exportStoryboard } from '../export/storyboard';
 import { shotListCsv } from '../export/shotList';
+import { exportGltf } from '../export/gltf';
 import { saveExport } from '../io/files';
 import { Icon } from './icons';
 
@@ -13,6 +14,7 @@ const KINDS: { id: ExportKind; label: string; detail: string; icon: () => React.
   { id: 'video', label: 'Video', detail: 'MP4 animatic, 1080p', icon: Icon.play },
   { id: 'storyboard', label: 'Storyboard', detail: 'PDF to print or send', icon: Icon.storyboard },
   { id: 'shotlist', label: 'Shot list', detail: 'CSV for spreadsheets', icon: Icon.list },
+  { id: 'gltf', label: '3D scene', detail: 'glTF for Blender and other 3D apps', icon: Icon.cube },
 ];
 
 const FPS_OPTIONS: Fps[] = [24, 25, 30];
@@ -58,6 +60,9 @@ export function ExportPanel({ onClose }: { onClose: () => void }) {
         );
         description = 'PDF document';
         suffix = ' storyboard';
+      } else if (prefs.kind === 'gltf') {
+        result = await exportGltf(project, { annotations: prefs.annotations });
+        description = '3D scene';
       } else {
         result = { blob: new Blob([shotListCsv(project)], { type: 'text/csv' }), extension: '.csv' };
         description = 'Shot list';
@@ -148,6 +153,15 @@ export function ExportPanel({ onClose }: { onClose: () => void }) {
             </div>
             <Toggle label="Start and end of shots that move" on={prefs.startEnd} set={(v) => setPrefs({ startEnd: v })} />
             <Toggle label="Arrows and labels" on={prefs.annotations} set={(v) => setPrefs({ annotations: v })} />
+          </>
+        )}
+        {prefs.kind === 'gltf' && (
+          <>
+            <div className="tool-note">
+              The set, every camera, and the whole film as one animation with a Film camera that cuts like the film. People keep
+              the pose they have at the start.
+            </div>
+            <Toggle label="Arrows" on={prefs.annotations} set={(v) => setPrefs({ annotations: v })} />
           </>
         )}
         {prefs.kind === 'shotlist' && (

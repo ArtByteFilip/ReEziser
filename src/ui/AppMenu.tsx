@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../store/store';
 import { ASPECT_RATIOS } from '../model/lens';
 import { createProject } from '../model/defaults';
+import { createSampleProject } from '../model/sample';
 import type { Fps } from '../model/types';
-import { forgetFileHandle } from '../io/files';
-import { addMusicFlow, openProjectFlow, saveProjectFlow } from './fileActions';
+import { addMusicFlow, openProjectFlow, replaceScene, saveProjectFlow } from './fileActions';
 import { useTransient } from '../viewport/shared';
+import { useSettings } from '../store/settings';
 
 const FPS_OPTIONS: Fps[] = [24, 25, 30];
 
@@ -17,6 +18,8 @@ export function AppMenu({ onClose }: { onClose: () => void }) {
   const canRedo = useStore((s) => s.canRedo);
   const apply = useStore((s) => s.apply);
   const music = useStore((s) => s.project.audio?.file);
+  const theme = useSettings((s) => s.theme);
+  const setTheme = useSettings((s) => s.setTheme);
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -39,16 +42,8 @@ export function AppMenu({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="floating menu" ref={ref} role="menu">
-      <MenuItem
-        label="New scene"
-        onClick={run(() => {
-          // New scene is undoable rather than confirmed.
-          const fresh = createProject();
-          forgetFileHandle();
-          apply((d) => Object.assign(d, fresh));
-          useStore.setState({ shotIndex: 0, phase: 'start', selection: [], selectedCameraId: null, subjectId: null });
-        })}
-      />
+      <MenuItem label="New scene" onClick={run(() => replaceScene(createProject()))} />
+      <MenuItem label="Open sample scene" onClick={run(() => replaceScene(createSampleProject()))} />
       <MenuItem label="Open…" shortcut="Ctrl+O" onClick={run(openProjectFlow)} />
       <MenuItem label="Save" shortcut="Ctrl+S" onClick={run(() => saveProjectFlow(false))} />
       <MenuItem label="Save as…" shortcut="Ctrl+Shift+S" onClick={run(() => saveProjectFlow(true))} />
@@ -69,6 +64,14 @@ export function AppMenu({ onClose }: { onClose: () => void }) {
             onClick={() => apply((d) => void (d.aspectRatio = r))}
           >
             {r}
+          </button>
+        ))}
+      </div>
+      <div className="menu-label">Theme</div>
+      <div className="segmented">
+        {(['dark', 'light', 'system'] as const).map((t) => (
+          <button key={t} className={t === theme ? 'on' : ''} onClick={() => setTheme(t)}>
+            {t === 'dark' ? 'Dark' : t === 'light' ? 'Light' : 'Windows'}
           </button>
         ))}
       </div>

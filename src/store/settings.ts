@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { StoryboardGrid } from '../export/layout';
 import type { Paper } from '../export/pdf';
+import type { OnboardingStep } from '../model/onboarding';
 
 /** Frame guides in Camera view. Off by default; the frame itself is always shown. */
 export interface Guides {
@@ -17,7 +18,10 @@ export const GUIDE_LABELS: Record<keyof Guides, { label: string; hint: string }>
   horizon: { label: 'Horizon', hint: 'Where the horizon is, and whether the camera is level' },
 };
 
-export type ExportKind = 'video' | 'storyboard' | 'shotlist';
+/** 'system' follows Windows' light/dark setting. */
+export type ThemeChoice = 'system' | 'dark' | 'light';
+
+export type ExportKind = 'video' | 'storyboard' | 'shotlist' | 'gltf';
 
 export interface ExportPrefs {
   kind: ExportKind;
@@ -31,13 +35,18 @@ export interface ExportPrefs {
 interface Settings {
   guides: Guides;
   exportPrefs: ExportPrefs;
+  theme: ThemeChoice;
+  setTheme(t: ThemeChoice): void;
+  /** Which first-run tip is showing (3 = done). */
+  onboarding: OnboardingStep;
+  setOnboarding(step: OnboardingStep): void;
   toggleGuide(key: keyof Guides): void;
   setExportPrefs(p: Partial<ExportPrefs>): void;
 }
 
 const KEY = 'reeziser.settings';
 
-function load(): Partial<Pick<Settings, 'guides' | 'exportPrefs'>> {
+function load(): Partial<Pick<Settings, 'guides' | 'exportPrefs' | 'theme' | 'onboarding'>> {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? '{}');
   } catch {
@@ -45,9 +54,12 @@ function load(): Partial<Pick<Settings, 'guides' | 'exportPrefs'>> {
   }
 }
 
-function save(s: Pick<Settings, 'guides' | 'exportPrefs'>) {
+function save(s: Pick<Settings, 'guides' | 'exportPrefs' | 'theme' | 'onboarding'>) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ guides: s.guides, exportPrefs: s.exportPrefs }));
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ guides: s.guides, exportPrefs: s.exportPrefs, theme: s.theme, onboarding: s.onboarding }),
+    );
   } catch {
     // Preferences are best effort.
   }
@@ -67,6 +79,17 @@ export const useSettings = create<Settings>()((set, get) => ({
     paper: /^en-(US|CA)$/.test(navigator.language) ? 'letter' : 'a4',
     startEnd: true,
     ...stored.exportPrefs,
+  },
+  // Dark by default, as the brief asks; light is a choice.
+  theme: stored.theme ?? 'dark',
+  setTheme(theme) {
+    set({ theme });
+    save(get());
+  },
+  onboarding: stored.onboarding ?? 0,
+  setOnboarding(onboarding) {
+    set({ onboarding });
+    save(get());
   },
   toggleGuide(key) {
     set({ guides: { ...get().guides, [key]: !get().guides[key] } });

@@ -13,10 +13,42 @@
   --radius-sm: 9px;
   --shadow: 0 10px 34px rgba(0, 0, 0, 0.38), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ink: 255, 255, 255;
+  --mid: #c7a6ff;
+  --frame-dim: rgba(10, 11, 13, 0.72);
+  --frame-text: rgba(255, 255, 255, 0.75);
+  --frame-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  --sunken: rgba(0, 0, 0, 0.25);
+  --surface-strong: rgba(70, 74, 82, 0.9);
+  --thumb-empty: linear-gradient(180deg, #23262b, #2b2e34);
   --fs-s: 12px;
   --fs-m: 13.5px;
   --fs-l: 15px;
   color-scheme: dark;
+}
+
+/* Light theme (Menu → Theme). Same layout, quieter paper-like surfaces. */
+:root[data-theme='light'] {
+  --bg: #e7e5e0;
+  --surface: rgba(252, 251, 249, 0.82);
+  --surface-solid: #fbfaf8;
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-strong: rgba(255, 255, 255, 0.98);
+  --line: rgba(0, 0, 0, 0.1);
+  --text: #1d1f23;
+  --text-dim: #646a73;
+  --accent: #e0950f;
+  --accent-soft: rgba(224, 149, 15, 0.16);
+  --end: #2f7fd0;
+  --shadow: 0 10px 30px rgba(40, 35, 25, 0.16), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  --ink: 0, 0, 0;
+  --mid: #7a4fc9;
+  --frame-dim: rgba(214, 211, 205, 0.86);
+  --frame-text: rgba(0, 0, 0, 0.7);
+  --frame-text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  --sunken: rgba(0, 0, 0, 0.06);
+  --thumb-empty: linear-gradient(180deg, #dcdad5, #e8e6e1);
+  color-scheme: light;
 }
 
 * {
@@ -144,7 +176,7 @@ input {
 .icon-btn:hover,
 .pill-btn:hover,
 .icon-btn.active {
-  background: rgba(70, 74, 82, 0.85);
+  background: var(--surface-strong);
 }
 
 .icon-btn:active,
@@ -234,7 +266,7 @@ input {
 /* ---------- Segmented controls & chips ---------- */
 .segmented {
   display: inline-flex;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--sunken);
   border-radius: 10px;
   padding: 3px;
   gap: 2px;
@@ -261,7 +293,7 @@ input {
 }
 
 .segmented button.on {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(var(--ink), 0.12);
   color: var(--text);
 }
 
@@ -370,7 +402,7 @@ input {
   height: 56px;
   gap: 10px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--ink), 0.05);
 }
 
 .shape-tile.primary span {
@@ -426,7 +458,7 @@ input {
 }
 
 .text-field {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 7px 10px;
@@ -504,7 +536,7 @@ input {
 }
 
 .num-field input {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 3px 6px;
@@ -525,7 +557,7 @@ input {
 .lens {
   padding: 8px 0;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--sunken);
   font-weight: 600;
   transition: background 150ms var(--ease);
 }
@@ -617,7 +649,7 @@ input {
 }
 
 .shot-card:hover .thumb {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(var(--ink), 0.3);
 }
 
 .shot-card.selected .thumb {
@@ -654,7 +686,7 @@ input {
 .thumb-empty {
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg, #23262b, #2b2e34);
+  background: var(--thumb-empty);
 }
 
 .shot-num {
@@ -716,7 +748,7 @@ input {
   height: 66px;
   margin-bottom: 21px;
   border-radius: 10px;
-  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  border: 1.5px dashed rgba(var(--ink), 0.2);
   display: grid;
   place-items: center;
   color: var(--text-dim);
@@ -753,8 +785,8 @@ input {
 .frame-info {
   position: absolute;
   font-size: var(--fs-s);
-  color: rgba(255, 255, 255, 0.75);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  color: var(--frame-text);
+  text-shadow: var(--frame-text-shadow);
 }
 
 .frame-info b {
@@ -936,7 +968,7 @@ input {
 
 .text-btn.strong {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--ink), 0.05);
 }
 
 .shapes-sep {
@@ -1014,7 +1046,7 @@ input {
   width: 30px;
   height: 18px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(var(--ink), 0.14);
   position: relative;
   transition: background 150ms var(--ease);
   flex: none;
@@ -1140,8 +1172,12 @@ input {
 .shot-type {
   position: absolute;
   left: 4px;
-  right: 12px;
   bottom: 4px;
+  max-width: calc(100% - 24px);
+  /* A dark pill, so it reads on light and dark thumbnails alike. */
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+  padding: 0 5px;
   font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
@@ -1160,9 +1196,6 @@ input {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
 }
 
-.shot-cam + .shot-type {
-  right: 12px;
-}
 
 /* ---------- Radial menu ---------- */
 .radial {
@@ -1212,7 +1245,7 @@ input {
 }
 
 .radial-item:hover {
-  background: rgba(70, 74, 82, 0.92);
+  background: var(--surface-strong);
 }
 
 .radial-item:hover span {
@@ -1341,7 +1374,7 @@ input {
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(var(--ink), 0.1);
   overflow: hidden;
 }
 
@@ -1366,7 +1399,7 @@ input {
 
 .phase-switch button.on.mid,
 .frame-info b.mid {
-  color: #c7a6ff;
+  color: var(--mid);
 }
 
 .phase-switch button.on.mid {
@@ -1375,7 +1408,7 @@ input {
 }
 
 .frame-border.mid {
-  box-shadow: 0 0 0 1.5px #c7a6ff;
+  box-shadow: 0 0 0 1.5px var(--mid);
 }
 
 .timeline {
@@ -1440,14 +1473,14 @@ input {
   position: absolute;
   bottom: 0;
   height: 5px;
-  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(var(--ink), 0.25);
   font-size: 10px;
   color: var(--text-dim);
 }
 
 .tl-ruler span.major {
   height: 9px;
-  border-color: rgba(255, 255, 255, 0.45);
+  border-color: rgba(var(--ink), 0.45);
 }
 
 .tl-ruler span.major {
@@ -1485,7 +1518,7 @@ input {
   position: relative;
   height: 26px;
   border-radius: 7px;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--sunken);
   cursor: ew-resize;
 }
 
@@ -1497,7 +1530,7 @@ input {
   position: absolute;
   top: 12px;
   height: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(var(--ink), 0.15);
   border-radius: 1px;
   cursor: default;
 }
@@ -1525,7 +1558,7 @@ input {
 .tl-seg span {
   font-size: 9.5px;
   line-height: 12px;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(var(--ink), 0.75);
   white-space: nowrap;
   padding: 0 10px;
 }
@@ -1550,7 +1583,7 @@ input {
 }
 
 .tl-key.at {
-  box-shadow: 0 0 0 2px var(--surface-solid), 0 0 0 3.5px #c7a6ff;
+  box-shadow: 0 0 0 2px var(--surface-solid), 0 0 0 3.5px var(--mid);
 }
 
 .tl-track-area {
@@ -1567,7 +1600,7 @@ input {
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #c7a6ff;
+  background: var(--mid);
   border-radius: 1px;
 }
 
@@ -1665,4 +1698,51 @@ input {
 /* With music the cards are taller; keep the add button level with the thumbnails. */
 .strip.has-music .shot-add {
   margin-bottom: 38px;
+}
+
+/* ---------- First-run tips ---------- */
+.tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 270px;
+  padding: 12px 34px 10px 14px;
+  /* Under palettes and panels, so it never blocks what it points at. */
+  z-index: 14;
+  transition: opacity 200ms var(--ease);
+  border-color: rgba(245, 165, 36, 0.45);
+}
+
+.tip p {
+  margin: 4px 0 6px;
+  line-height: 1.4;
+}
+
+.tip-step {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.tip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: -8px;
+}
+
+.tip-actions .text-btn {
+  padding: 4px 8px;
+  font-size: var(--fs-s);
+  color: var(--accent);
+}
+
+.tip-actions .text-btn.dim {
+  color: var(--text-dim);
+}
+
+.tip-close {
+  position: absolute;
+  right: 6px;
+  top: 6px;
 }

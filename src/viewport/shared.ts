@@ -15,6 +15,8 @@ export const viewportApi: {
   resetView: () => void;
   /** Renders a still through a shot's camera (see StillRenderer). */
   renderStill: (opts: StillOptions) => Promise<HTMLCanvasElement>;
+  /** Copies of the scene's objects as built at a shot and time (for 3D export). */
+  captureObjects: (opts: Omit<StillOptions, 'width' | 'height'>) => Promise<THREE.Object3D[]>;
 } = {
   camera: null,
   canvas: null,
@@ -22,6 +24,7 @@ export const viewportApi: {
   focusSelection: () => {},
   resetView: () => {},
   renderStill: () => Promise.reject(new Error('The viewport is not ready yet.')),
+  captureObjects: () => Promise.reject(new Error('The viewport is not ready yet.')),
 };
 
 /** Keys currently held (lowercase `KeyboardEvent.key`). */

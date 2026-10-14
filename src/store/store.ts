@@ -16,6 +16,7 @@ import {
 import { applyCameraMove, parseMoveId, type MoveDirection, type MoveKind } from '../model/cameraMoves';
 import { createGroup, expandToGroups, ungroup } from '../model/groups';
 import { splitShot } from '../model/timeline';
+import { useSettings } from './settings';
 import { cameraPathKeys, pathKeys, takeKeys, type TakeSample } from '../model/paths';
 
 /** Samples of the take in progress; not state, since nothing renders them. */
@@ -619,6 +620,8 @@ export function currentSubject(
 }
 
 function maybeHintEnd(get: () => Store): void {
+  // The first-run tip about End says the same thing; don't stack them.
+  if (useSettings.getState().onboarding === 1) return;
   if (get().phase === 'start') {
     get().showHint('switch-to-end', 'Switch to End and move something to create motion.');
   }

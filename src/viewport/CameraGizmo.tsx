@@ -7,6 +7,7 @@ import { verticalFov } from '../model/lens';
 import { useStore } from '../store/store';
 import { ACCENT, armRadial, useTransient, viewportApi } from './shared';
 import { AxisLock } from '../model/axisLock';
+import { useSceneColors } from '../ui/theme';
 
 const FRUSTUM_DEPTH = 1.4;
 
@@ -60,7 +61,8 @@ export function CameraGizmo({ state, aspect, cameraId, active, selected, ghost }
   }, [state.focalLength, aspect]);
 
   const dimmed = ghost || !active;
-  const color = selected ? ACCENT : dimmed ? '#8b9099' : '#d8dbe0';
+  const colors = useSceneColors();
+  const color = selected ? ACCENT : dimmed ? colors.gizmoIdle : colors.gizmo;
   const opacity = ghost ? 0.3 : 1;
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -141,7 +143,7 @@ export function CameraGizmo({ state, aspect, cameraId, active, selected, ghost }
         </mesh>
         <mesh position={[0, 0, -0.06]} rotation-x={Math.PI / 2}>
           <cylinderGeometry args={[0.07, 0.08, 0.1, 16]} />
-          <meshLambertMaterial color="#3a3d44" transparent={ghost} opacity={opacity} />
+          <meshLambertMaterial color={colors.lens} transparent={ghost} opacity={opacity} />
         </mesh>
         {/* Invisible, larger hit area so the camera is easy to grab */}
         <mesh position={[0, 0, -0.4]} visible={false}>

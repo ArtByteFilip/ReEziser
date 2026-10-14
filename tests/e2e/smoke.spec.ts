@@ -14,9 +14,14 @@ const state = (page: import('@playwright/test').Page) =>
     };
   });
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  // First-run tips have their own test; elsewhere they would only get in the way.
+  const tips = info.title.includes('first-run tips');
+  await page.evaluate((tips) => {
+    localStorage.clear();
+    if (!tips) localStorage.setItem('reeziser.settings', JSON.stringify({ onboarding: 3 }));
+  }, tips);
   await page.reload();
 });
 
@@ -264,4 +269,92 @@ test('fast motion: timeline steps, split, drawn path, take and music', async ({ 
   await expect(page.locator('canvas.waveform')).toHaveCount(2);
 
   expect(errors).toEqual([]);
+});
+
+test('first-run tips and the sample scene', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await expect(page.locator('.tip')).toContainText('1 / 3');
+  await page.locator('.tip button', { hasText: 'Or open the sample scene' }).click();
+  await expect(page.getByText('Sample: The café')).toBeVisible();
+  await expect(page.locator('.shot-card')).toHaveCount(4);
+  // The sample already has people and motion, so the next tip is "play".
+  await expect(page.locator('.tip')).toContainText('3 / 3');
+  await page.locator('.tip button', { hasText: 'Skip tips' }).click();
+  await expect(page.locator('.tip')).toHaveCount(0);
+  // Loading the sample is undoable.
+  await page.keyboard.press('Control+z');
+  await expect(page.getByText('Untitled scene')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('touch: two-finger tap undoes, long press opens the radial menu, two fingers steer the camera', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const store = <T>(fn: string) => page.evaluate(`(${fn})(window.__store.getState())`) as Promise<T>;
+  /** Sends touch pointer events to the canvas: [type, pointerId, x, y]. */
+  const touch = (events: [string, number, number, number][]) =>
+    page.evaluate((evts) => {
+      const canvas = document.querySelector('canvas')!;
+      for (const [type, id, x, y] of evts) {
+        canvas.dispatchEvent(
+          new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: id === 1 }),
+        );
+      }
+    }, events);
+
+  await page.getByRole('button', { name: 'Add' }).click();
+  await page.locator('.shape-tile', { hasText: 'Box' }).click();
+  expect(await store<number>('s => s.project.objects.length')).toBe(1);
+
+  // Two-finger tap on empty floor: undo.
+  await touch([
+    ['pointerdown', 1, 300, 300],
+    ['pointerdown', 2, 360, 300],
+    ['pointerup', 1, 300, 300],
+    ['pointerup', 2, 360, 300],
+  ]);
+  expect(await store<number>('s => s.project.objects.length')).toBe(0);
+  // Three-finger tap: redo.
+  await touch([
+    ['pointerdown', 1, 300, 300],
+    ['pointerdown', 2, 360, 300],
+    ['pointerdown', 3, 420, 300],
+    ['pointerup', 1, 300, 300],
+    ['pointerup', 2, 360, 300],
+    ['pointerup', 3, 420, 300],
+  ]);
+  expect(await store<number>('s => s.project.objects.length')).toBe(1);
+
+  // Long press on the box: radial menu.
+  await page.keyboard.press('Escape');
+  const box = await page.evaluate(() => {
+    const w = window as any;
+    const st = w.__store.getState().project.objects[0].base;
+    const cam = w.__viewport.camera;
+    const v = new cam.position.constructor(st.position[0], 0.5, st.position[2]).project(cam);
+    return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight };
+  });
+  await touch([['pointerdown', 1, box.x, box.y]]);
+  await page.waitForTimeout(700);
+  await expect(page.locator('.radial-item').first()).toBeVisible();
+  await touch([['pointerup', 1, box.x, box.y]]);
+  await page.keyboard.press('Escape');
+
+  // Camera view: spreading two fingers walks the camera forward, as one undo step.
+  await page.keyboard.press('Tab');
+  await page.waitForFunction(() => (window as any).__viewport.camera?.name === 'shot');
+  const z0 = await store<number>('s => s.project.cameras[0].base.position[2]');
+  const steps: [string, number, number, number][] = [
+    ['pointerdown', 1, 600, 400],
+    ['pointerdown', 2, 700, 400],
+  ];
+  for (let i = 1; i <= 10; i++) steps.push(['pointermove', 1, 600 - i * 10, 400], ['pointermove', 2, 700 + i * 10, 400]);
+  steps.push(['pointerup', 1, 500, 400], ['pointerup', 2, 800, 400]);
+  await touch(steps);
+  const z1 = await store<number>('s => (s.project.shots[0].cameraTrack[0]?.value.position ?? s.project.cameras[0].base.position)[2]');
+  expect(z1).toBeLessThan(z0 - 0.5);
+
+  // Synthetic pointer ids can't be captured by the browser; real fingers can.
+  expect(errors.filter((e) => !e.includes('PointerCapture'))).toEqual([]);
 });

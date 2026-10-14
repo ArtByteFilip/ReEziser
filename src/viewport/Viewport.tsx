@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Line, OrbitControls } from '@react-three/drei';
-import { BACKGROUND, Stage } from './Stage';
+import { Stage } from './Stage';
+import { useSceneColors } from '../ui/theme';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { useStore, currentFrame } from '../store/store';
 import { aspectValue, verticalFov } from '../model/lens';
@@ -39,7 +40,6 @@ export function Viewport() {
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <color attach="background" args={[BACKGROUND]} />
       <Stage />
       <SceneContent />
       <Cameras />
@@ -60,6 +60,7 @@ function SceneContent() {
   const selection = useStore((s) => s.selection);
   const selectedCameraId = useStore((s) => s.selectedCameraId);
   const showAxis = useSettings((s) => s.guides.axis);
+  const colors = useSceneColors();
   const arrowDraft = useTransient((s) => s.arrowDraft);
   const pathDraft = useTransient((s) => s.pathDraft);
   const take = useStore((s) => s.take);
@@ -188,7 +189,7 @@ function SceneContent() {
         />
       )}
       {axis && (
-        <Line points={axis} color="#e5675f" lineWidth={1.5} dashed dashSize={0.3} gapSize={0.15} transparent opacity={0.85} />
+        <Line points={axis} color={colors.axis} lineWidth={1.5} dashed dashSize={0.3} gapSize={0.15} transparent opacity={0.85} />
       )}
       {viewMode === 'director' && editing && (
         <>
@@ -205,7 +206,7 @@ function SceneContent() {
           {cameraMotion && (
             <>
               <CameraGizmo state={cameraMotion.ghost} aspect={aspect} active ghost />
-              <Line points={cameraMotion.path} color="#d8dbe0" lineWidth={1} dashed dashSize={0.12} gapSize={0.08} />
+              <Line points={cameraMotion.path} color={colors.cameraPath} lineWidth={1} dashed dashSize={0.12} gapSize={0.08} />
             </>
           )}
         </>
@@ -277,6 +278,8 @@ function Cameras() {
         MIDDLE: THREE.MOUSE.PAN,
         RIGHT: THREE.MOUSE.ROTATE,
       };
+      // One finger selects and moves things; two fingers orbit and pinch-zoom.
+      c.touches = { ONE: -1 as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_ROTATE };
     };
     update();
     window.addEventListener('keydown', update);

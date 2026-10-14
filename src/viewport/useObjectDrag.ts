@@ -7,6 +7,7 @@ import { floorCentre, scaleAround, turnAround } from '../model/groups';
 import { AxisLock } from '../model/axisLock';
 import { useStore } from '../store/store';
 import { armRadial, heldKeys, useTransient, viewportApi } from './shared';
+import { LONG_PRESS_MS, multiTouch } from './touch';
 
 const GRID = 0.25;
 const GUIDE_SNAP = 0.12;
@@ -90,13 +91,38 @@ export function useObjectDrag() {
       const unitsPerPx = (2 * dist * Math.tan((fov * Math.PI) / 360)) / rect.height;
       let started = false;
       const lock = new AxisLock(LOCK_THRESHOLD);
+      const pointerId = e.pointerId;
+
+      // Touch and pen: resting on the object opens its radial menu.
+      let longPress: ReturnType<typeof setTimeout> | null = null;
+      if (e.pointerType !== 'mouse') {
+        longPress = setTimeout(() => {
+          longPress = null;
+          if (started || multiTouch()) return;
+          stopListening();
+          useTransient.getState().openRadial(startX, startY, { kind: 'object', id });
+        }, LONG_PRESS_MS);
+      }
+
+      /** A second finger turns this into a two-finger gesture: put things back. */
+      const abandon = () => {
+        stopListening();
+        if (!started) return;
+        useStore.getState().setObjectStates(starts);
+        useStore.getState().endGesture();
+        useTransient.getState().setDragging(false);
+        useTransient.getState().setGuides([]);
+      };
 
       const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        if (multiTouch()) return abandon();
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
         if (!started) {
           if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
           started = true;
+          if (longPress) clearTimeout(longPress);
           useStore.getState().beginGesture();
           useTransient.getState().setDragging(true);
           if (mode === 'move') useStore.getState().showHint('axis-lock', 'Hold Ctrl while dragging to move along one line only.');
@@ -162,10 +188,16 @@ export function useObjectDrag() {
         useStore.getState().setObjectStates(next);
       };
 
-      const up = () => {
+      const stopListening = () => {
+        if (longPress) clearTimeout(longPress);
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
+      };
+
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        stopListening();
         if (!started && wasSelected) {
           // A plain click inside a multi-selection narrows it to this object.
           useStore.getState().select([id]);

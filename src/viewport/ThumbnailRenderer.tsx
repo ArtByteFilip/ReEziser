@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useStore } from '../store/store';
 import { aspectValue } from '../model/lens';
 import { viewportApi } from './shared';
+import { useTheme } from '../ui/theme';
 
 const THUMB_HEIGHT = 180;
 const DEBOUNCE_MS = 450;
@@ -12,6 +13,8 @@ const DEBOUNCE_MS = 450;
  */
 export function ThumbnailRenderer() {
   const revision = useStore((s) => s.revision);
+  // Stills use the theme's stage colours, so they follow a theme change too.
+  const theme = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -29,7 +32,7 @@ export function ThumbnailRenderer() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [revision]);
+  }, [revision, theme]);
 
   return null;
 }

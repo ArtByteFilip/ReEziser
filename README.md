@@ -44,8 +44,10 @@ npm run desktop:build  # installer: src-tauri/target/release/bundle/msi/*.msi
 | Group · Ungroup | Ctrl + G · Ctrl + Shift + G |
 | Cameras | Select the camera: Lens · Framing (shot type, angle) · Move tabs. In Camera view the same tools are chips under the frame, plus frame guides |
 | Arrow · Label | [+] → Arrow, then drag on the floor · [+] → Label |
-| Export | Menu → Export… (Ctrl + E): video, storyboard PDF, shot list CSV |
+| Export | Menu → Export… (Ctrl + E): video, storyboard PDF, shot list CSV, 3D scene (.glb for Blender, with the film as an animation) |
 | Timeline | ˄ next to Start / End, or double-click a shot: drag the playhead into the shot and move things to add steps; drag a step to retime it, right-click to remove it; click a stretch to change how it moves; Split here |
 | Draw a path | Select a person or object → Draw path, then draw on the floor. For the camera: camera panel → Move → Draw a camera path |
 | Record a take | Select → ● Record, then press and drag: the shot plays while you hold |
+| Touch | One finger: select and move. Two fingers: orbit and pinch (in Camera view: look around and walk). Two-finger tap: undo, three-finger tap: redo. Hold on an object: radial menu |
+| Theme · Sample | Menu → Theme (Dark, Light, Windows) · Menu → Open sample scene |
 | Music | Menu → Add music… Cards show the waveform and beats; shot edges snap to beats (Shift: free); drag the waveform to slide the music |
